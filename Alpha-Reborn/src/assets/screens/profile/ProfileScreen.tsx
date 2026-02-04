@@ -11,29 +11,30 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
-import { useNavigation, NavigationProp, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { RootStackParamList } from '../../navigation/types';
-import { useAppDispatch, useAppSelector } from '../../../../scripts/store/hooks';
-import { fetchUserProfile } from '../../../../scripts/store/thunks/authThunks';
-import { fetchAllGameStatsThunk } from '../../../../scripts/store/thunks/gameStatsThunks';
-import { getFlagEmoji } from '../../utils/flags';
-import { getRankFromRating } from '../../utils/rank';
-import { ArrowLeft, User, Camera, LogOut } from 'lucide-react-native';
+import { RootStackParamList } from '../../../navigation/types';
+import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import { fetchUserProfile, updateUserProfileThunk, logoutUser } from '../../../store/slices/authSlice';
+import { fetchAllGameStatsThunk } from '../../../store/thunks/gameStatsThunks';
+import { getFlagEmoji } from '../../../utils/flags';
+import { getRankFromRating } from '../../../utils/rank';
+import { Feather } from '@expo/vector-icons';
 import { UserProfile, GameStats } from '../../../services/api/authService';
 import {
   requestMediaLibraryPermissionsAsync,
   launchImageLibraryAsync,
   MediaTypeOptions
 } from 'expo-image-picker';
-import { updateUserProfileThunk, logoutUser } from '../../../../scripts/store/thunks/authThunks';
+
 import Toast from 'react-native-toast-message';
 
 type ProfileScreenProps = {
   isOwnProfile?: boolean;
 };
 
-type ProfileScreenNavigationProp = NavigationProp<RootStackParamList>;
+type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ProfileScreenRouteProp = RouteProp<RootStackParamList, 'profile'>;
 
 export default function ProfileScreen({ isOwnProfile: propIsOwnProfile }: ProfileScreenProps) {
@@ -290,7 +291,7 @@ export default function ProfileScreen({ isOwnProfile: propIsOwnProfile }: Profil
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
-          <User size={64} color="gray" />
+          <Feather name="user" size={64} color="gray" />
           <Text style={styles.title}>Authentication Required</Text>
           <Text style={styles.subtitle}>Please sign in to view your profile</Text>
           <TouchableOpacity
@@ -331,7 +332,7 @@ export default function ProfileScreen({ isOwnProfile: propIsOwnProfile }: Profil
       >
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <ArrowLeft size={24} />
+            <Feather name="arrow-left" size={24} />
           </TouchableOpacity>
           <Text style={styles.headerText}>Profile</Text>
         </View>
@@ -346,7 +347,7 @@ export default function ProfileScreen({ isOwnProfile: propIsOwnProfile }: Profil
               <Image source={{ uri: avatar }} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                <User size={48} color="gray" />
+                <Feather name="user" size={48} color="gray" />
               </View>
             )}
             {isOwnProfile && (
@@ -354,7 +355,7 @@ export default function ProfileScreen({ isOwnProfile: propIsOwnProfile }: Profil
                 {uploading ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Camera size={16} color="#fff" />
+                  <Feather name="camera" size={16} color="#fff" />
                 )}
               </View>
             )}
@@ -434,7 +435,7 @@ export default function ProfileScreen({ isOwnProfile: propIsOwnProfile }: Profil
 
         {isOwnProfile && (
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <LogOut size={20} color="#EF4444" />
+            <Feather name="log-out" size={20} color="#EF4444" />
             <Text style={styles.logoutText}>Logout</Text>
           </TouchableOpacity>
         )}

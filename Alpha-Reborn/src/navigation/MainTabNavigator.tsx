@@ -6,10 +6,10 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 
 // Import your screens
-import NotificationScreen from "../screens/notification/Notification";
-import ProfileScreen from ".././screens/profile/ProfileScreen";
-import MarketScreen from ".././screens/market/MarketScreen";
-import WalletScreen from ".././screens/wallet/WalletScreen";
+import NotificationScreen from "../assets/screens/notification/Notification";
+import ProfileScreen from "../assets/screens/profile/ProfileScreen";
+import MarketScreen from "../assets/screens/market/MarketScreen";
+import WalletScreen from "../assets/screens/wallet/WalletScreen";
 import { useAppDispatch } from '../store/hooks';
 import { logout } from '../store/slices/authSlice';
 
@@ -46,7 +46,7 @@ const GameCard: React.FC<{ item: Game; onPress: () => void; }> = ({ item, onPres
 
 function GamesScreen() {
   const { width } = useWindowDimensions();
-    const numColumns = width > 600 ? 3 : 2;
+  const numColumns = width > 600 ? 3 : 2;
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const handleGamePress = (game: Game) => {
     navigation.navigate('GameLobby', { gameId: game.id });

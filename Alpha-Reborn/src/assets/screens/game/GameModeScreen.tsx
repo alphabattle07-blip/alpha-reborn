@@ -3,8 +3,8 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import { useSelector, } from "react-redux";  // ✅ for reading state
-import { RootState } from "../../../../scripts/store";
-import { ToastProvider } from '../../hooks/useToast';
+import { RootState } from "../../../store";
+import { ToastProvider } from '../../../hooks/useToast';
 
 
 // Import game screens

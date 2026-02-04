@@ -18,11 +18,11 @@ import Animated, {
   Easing,
   cancelAnimation,
 } from 'react-native-reanimated';
-import { useSound } from '../../../../../scripts/hooks/useSound';
-import hopSound from '../../../../../src/assets/sounds/hop.mp3';
+import { useSound } from '../../../../hooks/useSound';
+import hopSound from '../../../../assets/sounds/hop.mp3';
 import captureSound from '../../../../assets/sounds/capture.mp3';
-import { useBackgroundSound } from "../../../../../scripts/hooks/useBackgroundSound";
-import bgSound from "../../../../assets/sounds/backgrounds1 short.mp3";
+import { useBackgroundSound } from "../../../../hooks/useBackgroundSound";
+import bgSound from "../../../../assets/sounds/backgrounds1_short.mp3";
 import { AYO_BOARD_CONFIG } from './ayoConfig';
 
 const boardImageSource = require('../../../../assets/images/ayo-board.png');
@@ -77,7 +77,7 @@ export const AyoSkiaImageBoard: React.FC<AyoSkiaImageBoardProps> = ({ board, boa
   useBackgroundSound(bgSound);
   const [animationBoard, setAnimationBoard] = useState<number[] | null>(null);
   const [animationSteps, setAnimationSteps] = useState<AnimationStep[]>([]);
-  const animationTimers = useRef<NodeJS.Timeout[]>([]);
+  const animationTimers = useRef<any[]>([]);
   const boardImage = useImage(boardImageSource);
   const seedImage = useImage(seedImageSource);
   const animatedX = useSharedValue(0);

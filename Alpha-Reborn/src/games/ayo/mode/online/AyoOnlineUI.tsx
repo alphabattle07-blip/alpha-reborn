@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, SafeAreaView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useAppDispatch, useAppSelector } from '../../../../../scripts/store/hooks';
+import { useAppDispatch, useAppSelector } from '../../../../store/hooks';
 import {
   createOnlineGame,
   joinOnlineGame,
   fetchAvailableGames,
   updateOnlineGameState,
   fetchGameState
-} from '../../../../../scripts/store/thunks/onlineGameThunks';
-import { clearCurrentGame, setCurrentGame } from '../../../../../scripts/store/slices/onlineGameSlice';
-import { usePlayerProfile } from '../../../../../scripts/hooks/usePlayerProfile';
+} from '../../../../store/thunks/onlineGameThunks';
+import { clearCurrentGame, setCurrentGame } from '../../../../store/slices/onlineGameSlice';
+import { usePlayerProfile } from '../../../../hooks/usePlayerProfile';
 import { calculateMoveResult, Capture } from "../core/AyoCoreLogic";
 import { AyoSkiaImageBoard } from "../core/AyoSkiaBoard"; // Directly use the board component
 import GamePlayerProfile from "../core/GamePlayerProfile"; // Directly use the profile component
@@ -53,7 +53,7 @@ const AyoOnlineUI = () => {
   // Matchmaking State
   const [isMatchmaking, setIsMatchmaking] = useState(false);
   const [matchmakingMessage, setMatchmakingMessage] = useState('Finding match...');
-  const matchmakingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const matchmakingIntervalRef = useRef<any>(null);
   const hasStartedMatchmaking = useRef(false);
 
   // Identify Player Role
@@ -311,7 +311,7 @@ const AyoOnlineUI = () => {
     const virtualState = {
       board: visualBoard,
       scores: { 1: 0, 2: 0 }, // Scores are visual only here
-      currentPlayer: 2, // We always play as Bottom (Player 2) in visual space
+      currentPlayer: 2 as 1 | 2, // We always play as Bottom (Player 2) in visual space
       isGameOver: false,
       timerState: { player1Time: 0, player2Time: 0, isRunning: false, lastActivePlayer: 2 }
     };
@@ -340,10 +340,10 @@ const AyoOnlineUI = () => {
 
       if (needsRotation) {
         // We are P1 (Logical 1)
-        nextTurnId = nextLogicalPlayer === 1 ? currentGame.player1?.id : currentGame.player2?.id;
+        nextTurnId = nextLogicalPlayer === 1 ? (currentGame.player1?.id || currentGame.currentTurn) : (currentGame.player2?.id || currentGame.currentTurn);
       } else {
         // We are P2 (Logical 2)
-        nextTurnId = nextLogicalPlayer === 2 ? currentGame.player2?.id : currentGame.player1?.id;
+        nextTurnId = nextLogicalPlayer === 2 ? (currentGame.player2?.id || currentGame.currentTurn) : (currentGame.player1?.id || currentGame.currentTurn);
       }
 
       setPendingServerUpdate({
@@ -488,7 +488,7 @@ const AyoOnlineUI = () => {
     };
 
     const bottomProfile = {
-      name: userProfile?.displayName || "You",
+      name: playerProfile?.name || "You",
       rating: userProfile?.rating || 1200,
       country: "NG",
       score: needsRotation ? p1Score : p2Score, // Logic My Score

@@ -8,11 +8,11 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useAppDispatch, useAppSelector } from '../../../../scripts/store/hooks';
+import { useAppDispatch, useAppSelector } from '../../../store/hooks';
 import { useSocket } from '../../hooks/useSocket';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useNavigation } from '@react-navigation/native';
-import { fetchAvailableGames, createOnlineGame, joinOnlineGame } from '../../../../scripts/store/thunks/onlineGameThunks';
+import { fetchAvailableGames, createOnlineGame, joinOnlineGame } from '../../../store/thunks/onlineGameThunks';
 
 interface AvailableGame {
   id: string;

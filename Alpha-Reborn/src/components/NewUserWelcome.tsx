@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Star, Play } from 'lucide-react-native';
+import { Feather } from '@expo/vector-icons';
 
 interface NewUserWelcomeProps {
   onStartPlaying: () => void;
@@ -10,21 +10,21 @@ export default function NewUserWelcome({ onStartPlaying }: NewUserWelcomeProps) 
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <Star size={48} color="#FFD700" style={styles.icon} />
+        <Feather name="star" size={48} color="#FFD700" style={styles.icon} />
         <Text style={styles.title}>Welcome to Alpha-Battle!</Text>
         <Text style={styles.subtitle}>
-          You're all set as a Rookie with 1000 R-coins. 
+          You're all set as a Rookie with 1000 R-coins.
           Start playing to climb the ranks!
         </Text>
-        
+
         <View style={styles.stats}>
           <Text style={styles.statsText}>
             🏆 All games start at: 0 Wins • 0 Losses • 0 Draws
           </Text>
         </View>
-        
+
         <TouchableOpacity style={styles.button} onPress={onStartPlaying}>
-          <Play size={20} color="white" style={styles.buttonIcon} />
+          <Feather name="play" size={20} color="white" style={styles.buttonIcon} />
           <Text style={styles.buttonText}>Start Playing</Text>
         </TouchableOpacity>
       </View>

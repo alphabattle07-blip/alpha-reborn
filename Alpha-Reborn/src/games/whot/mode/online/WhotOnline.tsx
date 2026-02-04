@@ -2,12 +2,12 @@
 import React, { useState, useEffect, useRef, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, SafeAreaView, Text, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useAppDispatch, useAppSelector } from '../../../../../scripts/store/hooks';
+import { useAppDispatch, useAppSelector } from '../../../../store/hooks';
 import {
   fetchGameState,
   updateOnlineGameState,
-} from '../../../../../scripts/store/thunks/onlineGameThunks';
-import { clearCurrentGame, setCurrentGame } from '../../../../../scripts/store/slices/onlineGameSlice';
+} from '../../../../store/thunks/onlineGameThunks';
+import { clearCurrentGame, setCurrentGame } from '../../../../store/slices/onlineGameSlice';
 import { matchmakingService } from '../../../../services/api/matchmakingService';
 import WhotCoreUI from '../core/ui/WhotCoreUI';
 import { useWhotFonts } from '../core/ui/useWhotFonts';
@@ -86,7 +86,7 @@ const WhotOnlineUI = () => {
   const [isMatchmaking, setIsMatchmaking] = useState(false);
   const [matchmakingMessage, setMatchmakingMessage] = useState('Finding match...');
 
-  const matchmakingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const matchmakingIntervalRef = useRef<any>(null);
   const hasStartedMatchmaking = useRef(false);
 
 
@@ -94,7 +94,7 @@ const WhotOnlineUI = () => {
   // Game Logic State
   const [isAnimating, setIsAnimating] = useState(false);
   const isAnimatingRef = useRef(false); // Ref for synchronous animation tracking
-  const cardListRef = useRef<AnimatedCardListHandle>(null);
+  const cardListRef = useRef<any>(null);
   const [hasDealt, setHasDealt] = useState(false);
   const [assetsReady, setAssetsReady] = useState(false);
   const playerHandIdsSV = useSharedValue<string[]>([]);

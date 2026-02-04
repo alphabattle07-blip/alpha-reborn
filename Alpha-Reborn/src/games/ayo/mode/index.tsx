@@ -1,7 +1,9 @@
 import React from 'react';
 import AyoComputerUI from "./computer/AyoComputerUI";
 import AyoOnlineUI from "./online/AyoOnlineUI";
-import { useToast } from "../../../../scripts/hooks/useToast";
+import { useToast } from "../../../hooks/useToast";
+
+import AyoBattleGroundUI from "./battleground/AyoBattleGroundUI";
 
 type AyoIndexProps = {
   mode: "computer" | "online" | "battle";
@@ -17,7 +19,7 @@ export default function AyoIndex({ mode }: AyoIndexProps) {
     }
   }, [mode]);
 
-  if (mode === "computer") return <AyoComputerUI toast={toast} />;
-  if (mode === "online") return <AyoOnlineUI toast={toast} />;
-  return <AyoBattleUI playerRank={1600} mStake={0} toast={toast} />;
+  if (mode === "computer") return <AyoComputerUI />;
+  if (mode === "online") return <AyoOnlineUI />;
+  return <AyoBattleGroundUI playerRank={1600} mStake={0} />;
 }

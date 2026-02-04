@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, SafeAreaView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useAppDispatch, useAppSelector } from '../../../../scripts/store/hooks';
+import { useAppDispatch, useAppSelector } from '../../../store/hooks';
 import {
     createOnlineGame,
     joinOnlineGame,
     fetchAvailableGames,
     updateOnlineGameState,
     fetchGameState
-} from '../../../../scripts/store/thunks/onlineGameThunks';
-import { clearCurrentGame, setCurrentGame } from '../../../../scripts/store/slices/onlineGameSlice';
-import { usePlayerProfile } from '../../../../scripts/hooks/usePlayerProfile';
+} from '../../../store/thunks/onlineGameThunks';
+import { clearCurrentGame, setCurrentGame } from '../../../store/slices/onlineGameSlice';
+import { usePlayerProfile } from '../../../hooks/usePlayerProfile';
 import { LudoCoreUI } from '../core/ui/LudoCoreUI';
 import { LudoGameState, initializeGame } from '../core/ui/LudoGameLogic';
 import LudoGameOver from '../computer/LudoGameOver';
@@ -29,7 +29,8 @@ const LudoOnline = () => {
     // Matchmaking State
     const [isMatchmaking, setIsMatchmaking] = useState(false);
     const [matchmakingMessage, setMatchmakingMessage] = useState('Finding match...');
-    const matchmakingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const matchmakingIntervalRef = useRef<any>(null);
+    const turnTimer = useRef<any>(null);
     const hasStartedMatchmaking = useRef(false);
 
     // --- Optimistic State Protection ---

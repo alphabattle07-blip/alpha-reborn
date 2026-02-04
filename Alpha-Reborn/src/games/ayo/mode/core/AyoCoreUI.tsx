@@ -11,7 +11,7 @@ import {
   Capture,
 } from "./AyoCoreLogic";
 import AyoGameOver from "../computer/AyoGameOver"; // ✅ import overlay
-import { usePlayerProfile } from "../../../../../scripts/hooks/usePlayerProfile"; // Import the hook
+import { usePlayerProfile } from "../../../../hooks/usePlayerProfile"; // Import the hook
 
 type AyoGameProps = {
   initialGameState?: AyoGameState;

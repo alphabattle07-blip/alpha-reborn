@@ -4,9 +4,9 @@ import { View, Text, StyleSheet, TouchableOpacity, Button } from 'react-native';
 import { initializeComputerGame, playComputerTurn, AyoComputerState, ComputerLevel, getComputerMove } from "./AyoComputerLogic";
 import { calculateMoveResult } from "../core/AyoCoreLogic";
 import { AyoGame } from "../core/AyoCoreUI";
-import { usePlayerProfile } from "../../../../../scripts/hooks/usePlayerProfile"
+import { usePlayerProfile } from "../../../../hooks/usePlayerProfile"
 import AyoGameOver from "./AyoGameOver";
-import { useAppDispatch } from "../../../../../scripts/store/hooks";
+import { useAppDispatch } from "../../../../store/hooks";
 
 const levels = [
   { label: "Apprentice (Easy)", value: 1, rating: 1250, reward: 10 },

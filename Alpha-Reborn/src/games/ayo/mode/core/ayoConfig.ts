@@ -19,10 +19,10 @@ export const AYO_BOARD_CONFIG = {
         maxWidthMultiplier: 0.9,
         // External margins for the board container
         margins: {
-            marginTop: "2%",
+            marginTop: 10,
             marginBottom: 0,
-            marginLeft: "10%",
-            marginRight: "10%",
+            marginLeft: 20,
+            marginRight: 20,
         },
     },
 };

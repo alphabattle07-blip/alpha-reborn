@@ -3,8 +3,8 @@ import React, { useMemo, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ComputerLevel } from './AyoComputerLogic';
-import { useAppDispatch, useAppSelector } from '../../../../../scripts/store/hooks';
-import { updateGameStatsThunk } from '../../../../../scripts/store/thunks/gameStatsThunks';
+import { useAppDispatch, useAppSelector } from '../../../../store/hooks';
+import { updateGameStatsThunk } from '../../../../store/thunks/gameStatsThunks';
 
 const levels = [
   { label: "Apprentice (Easy)", value: 1, rating: 1250, reward: 10 },

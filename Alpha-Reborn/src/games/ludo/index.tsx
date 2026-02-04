@@ -7,7 +7,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import LudoComputerGameScreen from "./computer/LudoComputerGameScreen"
 import LudoOnline from "./online/LudoOnline"
 import LudoBattleGroundUI from "./BattleGround/LudoBattleGroundUI"
-import { useToast } from "../../../scripts/hooks/useToast"
+import { useToast } from "../../hooks/useToast"
 
 type LudoIndexProps = {
   mode: "computer" | "online" | "battle";
@@ -46,5 +46,5 @@ export default function LudoIndex({ mode }: LudoIndexProps) {
   if (mode === "computer") return <LudoComputerGameScreen />;
 
   if (mode === "online") return <LudoOnline />;
-  return <LudoBattleGroundUI toast={toast} />;
+  return <LudoBattleGroundUI />;
 }

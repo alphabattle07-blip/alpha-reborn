@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, FlatList, StyleSheet } from "react-native";
 import { useWallet } from "./WalletContext";
-import { formatCurrency } from "../../utils/currency";
+import { formatCurrency } from "../../../utils/currency";
 
 export default function TransactionHistoryScreen() {
   const { transactions } = useWallet();

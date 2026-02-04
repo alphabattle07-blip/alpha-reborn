@@ -6,7 +6,7 @@ import WhotComputerGameScreen from "./computer/WhotComputerGameScreen";
 import WhotOnline from "./online/WhotOnline";
 import WhotBattleGroundUI from "./battleground/whotBattleGroundUI"
 
-import { useToast } from "../../../../scripts/hooks/useToast";
+import { useToast } from "../../../hooks/useToast";
 
 type WhotIndexProps = {
   mode: "computer" | "online" | "battle";
@@ -29,5 +29,5 @@ export default function WhotIndex({ mode }: WhotIndexProps) {
   if (mode === "computer") return <WhotComputerGameScreen />;
 
   if (mode === "online") return <WhotOnline />;
-  return <WhotBattleGroundUI toast={toast} />;
+  return <WhotBattleGroundUI />;
 }

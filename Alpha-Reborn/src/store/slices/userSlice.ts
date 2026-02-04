@@ -1,7 +1,7 @@
 // src/store/slices/userSlice.ts
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { UserProfile } from "../../../src/services/api/authService";
-import { fetchUserProfile, signInUser, updateUserProfileAndGameStatsThunk, updateUserProfileThunk } from '../thunks/authThunks';
+import { fetchUserProfile, signInUser, updateUserProfileAndGameStatsThunk, updateUserProfileThunk } from './authSlice';
 import { logout } from './authSlice';
 
 interface UserState {

@@ -41,7 +41,7 @@ import {
 import ComputerUI from "./whotComputerUI";
 import { WHOT_LEVELS as levels, ComputerLevel } from "../core/types";
 
-import { usePlayerProfile } from "../../../../../scripts/hooks/usePlayerProfile";
+import { usePlayerProfile } from "../../../../hooks/usePlayerProfile";
 import { useSharedValue } from "react-native-reanimated";
 import WhotCoreUI from "../core/ui/WhotCoreUI";
 import { useWhotFonts } from "../core/ui/useWhotFonts";
@@ -150,7 +150,7 @@ const WhotComputerUI = () => {
   const [allCards, setAllCards] = useState<Card[]>([]);
   const [isCardListReady, setIsCardListReady] = useState(false);
 
-  const cardListRef = useRef<AnimatedCardListHandle>(null);
+  const cardListRef = useRef<any>(null);
   const [hasDealt, setHasDealt] = useState(false);
   const [assetsReady, setAssetsReady] = useState(false);
 

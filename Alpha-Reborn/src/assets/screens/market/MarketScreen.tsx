@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
-import { formatCurrency } from "../../utils/currency";
+import { formatCurrency } from "../../../utils/currency";
 
 // Fixed spread rates
 const BUY_RATE = 45; // 45 M = $1 (users buy)

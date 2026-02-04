@@ -3,8 +3,8 @@ import { View, StyleSheet, Text, TouchableOpacity, useWindowDimensions, ScrollVi
 import Animated, { FadeIn, BounceIn, FadeOut } from "react-native-reanimated";
 import { Player, WHOT_LEVELS as levels, ComputerLevel } from "../types";
 import { Ionicons } from '@expo/vector-icons';
-import { useAppDispatch } from "../../../../../../scripts/store/hooks";
-import { updateGameStatsThunk } from "../../../../../../scripts/store/thunks/gameStatsThunks";
+import { useAppDispatch } from "../../../../../store/hooks";
+import { updateGameStatsThunk } from "../../../../../store/thunks/gameStatsThunks";
 
 
 const BATTLE_BONUS = 15;

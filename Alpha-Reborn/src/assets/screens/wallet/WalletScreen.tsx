@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { NavigationProp, useNavigation } from "@react-navigation/native";
 import { RootStackParamList } from "../../navigation/types";
 import { useWallet } from "./WalletContext";
-import { formatCurrency } from "../../utils/currency";
+import { formatCurrency } from "../../../utils/currency";
 
 export default function WalletScreen() {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();

@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LudoCoreUI } from '../core/ui/LudoCoreUI';
-import { usePlayerProfile } from "../../../../scripts/hooks/usePlayerProfile";
+import { usePlayerProfile } from "../../../hooks/usePlayerProfile";
 import LudoGameOver from "./LudoGameOver";
 
 const levels = [
