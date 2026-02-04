@@ -142,7 +142,7 @@ const IndividualAnimatedCard = memo(
           const val = stagedTargetSV.value;
           if (!val) return;
 
-          LatencyLogger.logAnimStart(val.timestamp);
+          runOnJS(LatencyLogger.logAnimStart)(val.timestamp);
 
           const { target, options, instant } = val;
           const {

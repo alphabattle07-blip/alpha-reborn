@@ -16,23 +16,23 @@ export const LatencyLogger = {
     debug: true,
 
     logTap() {
-        this.metrics.lastTap = Date.now();
-        if (this.debug) console.log('📍 [LATENCY] User Tap detected.');
+        LatencyLogger.metrics.lastTap = Date.now();
+        if (LatencyLogger.debug) console.log('📍 [LATENCY] User Tap detected.');
     },
 
     logEmit() {
-        this.metrics.lastEmit = Date.now();
-        const delay = this.metrics.lastEmit - this.metrics.lastTap;
-        if (this.debug) {
+        LatencyLogger.metrics.lastEmit = Date.now();
+        const delay = LatencyLogger.metrics.lastEmit - LatencyLogger.metrics.lastTap;
+        if (LatencyLogger.debug) {
             console.log(`📡 [LATENCY] Socket Emit. JS Overhead (Tap-to-Emit): ${delay}ms`);
         }
     },
 
     logReceive(remoteTimestamp?: number) {
         const now = Date.now();
-        this.metrics.lastReceive = now;
+        LatencyLogger.metrics.lastReceive = now;
 
-        if (this.debug) {
+        if (LatencyLogger.debug) {
             let serverDelayStr = '';
             if (remoteTimestamp) {
                 const serverDelay = now - remoteTimestamp;
@@ -44,11 +44,11 @@ export const LatencyLogger = {
 
     logAnimStart(stagedTimestamp?: number) {
         const now = Date.now();
-        this.metrics.lastAnimStart = now;
+        LatencyLogger.metrics.lastAnimStart = now;
 
-        const reactionDelay = this.metrics.lastReceive > 0 ? now - this.metrics.lastReceive : 0;
+        const reactionDelay = LatencyLogger.metrics.lastReceive > 0 ? now - LatencyLogger.metrics.lastReceive : 0;
 
-        if (this.debug) {
+        if (LatencyLogger.debug) {
             let catchupStr = '';
             if (stagedTimestamp) {
                 const totalLag = now - stagedTimestamp;
