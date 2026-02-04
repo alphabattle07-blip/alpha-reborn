@@ -9,7 +9,7 @@ import LoadingSpinner from '../src/components/LoadingSpinner';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import RootNavigator from '../src/navigation/RootNavigator';
-import { WalletProvider } from '../src/screens/wallet/WalletContext';
+import { WalletProvider } from '../src/assets/screens/wallet/WalletContext';
 import Toast from 'react-native-toast-message';
 
 function AppContent() {
