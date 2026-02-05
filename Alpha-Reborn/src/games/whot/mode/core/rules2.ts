@@ -5,6 +5,7 @@ import { Card, GameState } from "./types"; // ✅ FIXED: Import from core/types.
  * Check if a move is valid in Rule 2.
  */
 export const isValidMoveRule2 = (card: Card, state: GameState): boolean => {
+  "worklet";
   if (state.pile.length === 0) return true;
   const topCard = state.pile[state.pile.length - 1];
 

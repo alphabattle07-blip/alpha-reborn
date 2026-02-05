@@ -5,6 +5,7 @@ import { Card, GameState, CardSuit } from "./types";
  * Check if a move is valid in "Rule 1".
  */
 export const isValidMoveRule1 = (card: Card, state: GameState): boolean => {
+  "worklet";
   const { pile, pendingAction, lastPlayedCard, calledSuit } = state;
   if (pile.length === 0) return true;
 
