@@ -54,8 +54,8 @@ const HOME_SEED_POSITIONS = {
 };
 
 // Configuration for sizes (relative to canvas width)
-const BOARD_SCALE = 0.90;      // REDUCED from 0.76 to make room for big images
-const SIDE_IMAGE_SCALE = 0.127; // Size of the side images relative to canvas (approx 11%)
+const BOARD_SCALE = 0.96;      // REDUCED from 0.76 to make room for big images
+const SIDE_IMAGE_SCALE = 0.137; // Size of the side images relative to canvas (approx 11%)
 
 const BOARD_IMAGE_WIDTH = 1024;
 const BOARD_IMAGE_HEIGHT = 1024;
