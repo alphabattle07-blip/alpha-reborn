@@ -3,58 +3,57 @@
  * Structured measurement tool for real-time performance auditing.
  * Helps verify Tap-to-Socket, Receive-to-Land, and Server-Delay metrics.
  */
-export const LatencyLogger = {
-    // 🕒 Metric Storage
-    metrics: {
-        lastTap: 0,
-        lastEmit: 0,
-        lastReceive: 0,
-        lastAnimStart: 0,
-    },
 
-    // 📝 Logging Level (Set to false for production)
-    debug: true,
+// 📝 Logging Level (Set to false for production)
+const DEBUG = true;
 
-    logTap() {
-        LatencyLogger.metrics.lastTap = Date.now();
-        if (LatencyLogger.debug) console.log('📍 [LATENCY] User Tap detected.');
-    },
+// 🕒 Metric Storage (Separate from the exported object to avoid Worklet mutation warnings)
+let lastTap = 0;
+let lastEmit = 0;
+let lastReceive = 0;
+let lastAnimStart = 0;
 
-    logEmit() {
-        LatencyLogger.metrics.lastEmit = Date.now();
-        const delay = LatencyLogger.metrics.lastEmit - LatencyLogger.metrics.lastTap;
-        if (LatencyLogger.debug) {
-            console.log(`📡 [LATENCY] Socket Emit. JS Overhead (Tap-to-Emit): ${delay}ms`);
-        }
-    },
-
-    logReceive(remoteTimestamp?: number) {
-        const now = Date.now();
-        LatencyLogger.metrics.lastReceive = now;
-
-        if (LatencyLogger.debug) {
-            let serverDelayStr = '';
-            if (remoteTimestamp) {
-                const serverDelay = now - remoteTimestamp;
-                serverDelayStr = ` | Network RTT: ${serverDelay}ms`;
-            }
-            console.log(`📥 [LATENCY] Socket Receive.${serverDelayStr}`);
-        }
-    },
-
-    logAnimStart(stagedTimestamp?: number) {
-        const now = Date.now();
-        LatencyLogger.metrics.lastAnimStart = now;
-
-        const reactionDelay = LatencyLogger.metrics.lastReceive > 0 ? now - LatencyLogger.metrics.lastReceive : 0;
-
-        if (LatencyLogger.debug) {
-            let catchupStr = '';
-            if (stagedTimestamp) {
-                const totalLag = now - stagedTimestamp;
-                catchupStr = ` | Catch-up Delta: ${totalLag}ms`;
-            }
-            console.log(`🎬 [LATENCY] Animation Start. React/Tick Delay: ${reactionDelay}ms${catchupStr}`);
-        }
-    },
+export const logTap = () => {
+    lastTap = Date.now();
+    if (DEBUG) console.log('📍 [LATENCY] User Tap detected.');
 };
+
+export const logEmit = () => {
+    lastEmit = Date.now();
+    const delay = lastEmit - lastTap;
+    if (DEBUG) {
+        console.log(`📡 [LATENCY] Socket Emit. JS Overhead (Tap-to-Emit): ${delay}ms`);
+    }
+};
+
+export const logReceive = (remoteTimestamp?: number) => {
+    const now = Date.now();
+    lastReceive = now;
+
+    if (DEBUG) {
+        let serverDelayStr = '';
+        if (remoteTimestamp) {
+            const serverDelay = now - remoteTimestamp;
+            serverDelayStr = ` | Network RTT: ${serverDelay}ms`;
+        }
+        console.log(`📥 [LATENCY] Socket Receive.${serverDelayStr}`);
+    }
+};
+
+export const logAnimStart = (stagedTimestamp?: number) => {
+    const now = Date.now();
+    lastAnimStart = now;
+
+    const reactionDelay = lastReceive > 0 ? now - lastReceive : 0;
+
+    if (DEBUG) {
+        let catchupStr = '';
+        if (stagedTimestamp) {
+            const totalLag = now - stagedTimestamp;
+            catchupStr = ` | Catch-up Delta: ${totalLag}ms`;
+        }
+        console.log(`🎬 [LATENCY] Animation Start. React/Tick Delay: ${reactionDelay}ms${catchupStr}`);
+    }
+};
+
+// No LatencyLogger object needed here.

@@ -1,6 +1,6 @@
 // WhotOnlineScreen
-import React, { useState, useEffect, useRef, useMemo, Component, ErrorInfo, ReactNode } from 'react';
-import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, SafeAreaView, Text, useWindowDimensions } from 'react-native';
+import React, { useState, useEffect, useRef, useMemo, useCallback, Component, ErrorInfo, ReactNode } from 'react';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, SafeAreaView, Text, useWindowDimensions, Vibration } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAppDispatch, useAppSelector } from '../../../../store/hooks';
 import {
@@ -15,9 +15,12 @@ import { Card, CardSuit, GameState, WhotGameAction } from '../core/types';
 import { AnimatedCardListHandle } from '../core/ui/AnimatedCardList';
 import { useSharedValue } from 'react-native-reanimated';
 import { playCard, pickCard, callSuit, executeForcedDraw } from '../core/game';
+import { CARD_WIDTH, CARD_HEIGHT } from '../core/ui/whotConfig';
+import IndividualAnimatedCard from '../core/ui/IndividualAnimatedCard';
 import { socketService } from '../../../../services/api/socketService';
 import { WhotAssetManager } from '../core/ui/WhotAssetManager';
-import { LatencyLogger } from '../core/ui/LatencyLogger';
+import { logTap, logEmit, logReceive } from '../core/ui/LatencyLogger';
+import { useToast } from '../../../../hooks/useToast';
 
 // Error Boundary to catch crashes in child components move
 //move to whot
@@ -68,6 +71,7 @@ const WhotOnlineUI = () => {
   const { profile: userProfile } = useAppSelector(state => state.user);
   const { isAuthenticated, token } = useAppSelector(state => state.auth);
   const { width, height } = useWindowDimensions();
+  const { toast } = useToast();
   const isLandscape = width > height;
 
   // Error State for crash prevention
@@ -108,6 +112,11 @@ const WhotOnlineUI = () => {
 
   // Safety: Delay card rendering to prevent Reanimated initialization crashes on mount
   const [areCardsReadyToRender, setCardsReadyToRender] = useState(false);
+
+  const onFeedback = useCallback((message: string) => {
+    Vibration.vibrate(50);
+    toast({ title: 'Move Invalid', description: message, type: 'error' });
+  }, [toast]);
 
   // Font Stabilization
   useEffect(() => {
@@ -551,7 +560,7 @@ const WhotOnlineUI = () => {
       // 3. EMIT SOCKET IMMEDIATELY
       if (socketAction) {
         const actionWithTick = { ...socketAction, timestamp: socketAction.timestamp || Date.now() };
-        LatencyLogger.logEmit();
+        logEmit();
         socketService.emitMove(currentGame!.id, actionWithTick);
       }
 
@@ -600,7 +609,7 @@ const WhotOnlineUI = () => {
   };
 
   const handleRemoteAction = async (action: WhotGameAction) => {
-    LatencyLogger.logReceive(action.timestamp);
+    logReceive(action.timestamp);
     console.log("📥 Remote Action Received:", action.type);
 
     handleAction(async (currentBaseState) => {
@@ -693,7 +702,7 @@ const WhotOnlineUI = () => {
 
   const onCardPress = (card: Card) => {
     if (visualGameState?.currentPlayer !== 0) return;
-    LatencyLogger.logTap();
+    logTap();
 
     handleAction(async (currentBaseState) => {
       const dealer = cardListRef.current;
@@ -963,6 +972,7 @@ const WhotOnlineUI = () => {
       isAnimating={isAnimating}
       cardListRef={cardListRef}
       onCardPress={onCardPress}
+      onFeedback={onFeedback}
       onPickFromMarket={onPickFromMarket}
       onPagingPress={handlePagingPress}
       onSuitSelect={onSuitSelect}

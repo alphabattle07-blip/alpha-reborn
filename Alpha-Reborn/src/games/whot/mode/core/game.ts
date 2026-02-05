@@ -1,6 +1,7 @@
 import { generateDeck, shuffleDeck } from "./deck";
 // ✅ We import Rule 1 from its file
 import { applyCardEffectRule1, isValidMoveRule1 } from "./rules";
+import { isValidMoveRule2, applyCardEffectRule2 } from "./rules2";
 // ❌ DO NOT IMPORT Rule 2 here. We define it at the bottom of this file.
 import {
   Card,
@@ -461,117 +462,5 @@ export const getReshuffledState = (state: GameState): GameState => {
   };
 };
 
-// =========================================================
-// ✅ RULE 2 LOGIC DEFINED HERE TO PREVENT DUPLICATES
-// =========================================================
 
-/**
- * Check if a move is valid in Rule 2.
- */
-export const isValidMoveRule2 = (card: Card, state: GameState): boolean => {
-  if (state.pile.length === 0) return true;
-  const topCard = state.pile[state.pile.length - 1];
-
-  // --- DEFENSE STATE ---
-  if (
-    state.pendingAction?.type === "defend" &&
-    state.pendingAction.playerIndex === state.currentPlayer
-  ) {
-    // You must play the EXACT number to defend
-    // (e.g. attacked by 2 -> play 2, attacked by 5 -> play 5)
-    // You CANNOT defend 2 with 5 or vice versa.
-    const attackNumber = state.lastPlayedCard?.number || topCard.number;
-    return card.number === attackNumber;
-  }
-
-  // --- FORCED DRAW STATE ---
-  if (
-    state.pendingAction?.type === "draw" &&
-    state.pendingAction.playerIndex === state.currentPlayer
-  ) {
-    return false;
-  }
-
-  if (
-    state.pendingAction?.type === "continue" &&
-    state.pendingAction.playerIndex === state.currentPlayer
-  ) {
-    const specialCard = state.lastPlayedCard || topCard;
-
-    if (specialCard.number === 1) {
-      return card.suit === specialCard.suit || card.number === specialCard.number;
-    }
-
-    if (specialCard.number === 2 || specialCard.number === 14) {
-      return card.suit === specialCard.suit;
-    }
-  }
-
-  return card.suit === topCard.suit || card.number === topCard.number;
-};
-
-/**
- * Apply Rule 2 effects.
- */
-export const applyCardEffectRule2 = (
-  card: Card,
-  state: GameState,
-  playerIndex: number
-): GameState => {
-  const newState: GameState = { ...state };
-
-  const getNextPlayerIndex = (currentIdx: number, steps: number = 1) => {
-    return (
-      (currentIdx + newState.direction * steps + newState.players.length) %
-      newState.players.length
-    );
-  };
-
-  const opponentIndex = getNextPlayerIndex(playerIndex, 1);
-
-  switch (card.number) {
-    case 1: // Hold On
-      newState.currentPlayer = playerIndex; // Same player
-      newState.pendingAction = { type: "continue", playerIndex: playerIndex };
-      break;
-
-    case 2: // Pick Two
-      newState.currentPlayer = playerIndex; // Same player
-      newState.pendingAction = {
-        type: "draw",
-        playerIndex: opponentIndex,
-        count: 2,
-        returnTurnTo: playerIndex, // ✅ Required for forced draw loop
-      };
-      break;
-
-    // Case 5 (Pick 3) REMOVED - Treated as normal card
-
-    case 14: // General Market
-      newState.currentPlayer = playerIndex; // Same player
-      newState.pendingAction = {
-        type: "draw",
-        playerIndex: opponentIndex,
-        count: 1,
-        returnTurnTo: playerIndex, // ✅ Required for forced draw loop
-      };
-      break;
-
-    default: // Normal card
-      newState.currentPlayer = getNextPlayerIndex(playerIndex, 1);
-      newState.pendingAction = null;
-      break;
-  }
-
-  newState.pile = [...newState.pile, card];
-  newState.lastPlayedCard = card;
-
-  newState.players = newState.players.map((p, idx) =>
-    idx === playerIndex
-      ? { ...p, hand: p.hand.filter((c) => c.id !== card.id) }
-      : p
-  );
-
-  return newState;
-};
 

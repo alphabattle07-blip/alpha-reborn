@@ -21,6 +21,7 @@ import {
   TouchableOpacity,
   useWindowDimensions,
   View,
+  Vibration,
 } from "react-native";
 import { getCoords } from "../core/coordinateHelper";
 import { Card, CardSuit, GameState } from "../core/types";
@@ -48,6 +49,7 @@ import { useWhotFonts } from "../core/ui/useWhotFonts";
 import { chooseComputerMove, chooseComputerSuit } from "./whotComputerLogic";
 import { WhotAssetManager } from "../core/ui/WhotAssetManager";
 import { useNavigation } from "@react-navigation/native";
+import { useToast } from "../../../../hooks/useToast";
 
 // Error Boundary for Computer Mode
 interface ErrorBoundaryState {
@@ -97,7 +99,13 @@ type GameData = {
 const WhotComputerUI = () => {
   const { width, height } = useWindowDimensions();
   const navigation = useNavigation();
+  const { toast } = useToast();
   const isLandscape = width > height;
+
+  const handleFeedback = useCallback((message: string) => {
+    Vibration.vibrate(50);
+    toast({ title: "Move Invalid", description: message, type: "error" });
+  }, [toast]);
   const { font: loadedFont, whotFont: loadedWhotFont, areLoaded } =
     useWhotFonts();
   const playerProfile = usePlayerProfile("whot");
@@ -1201,6 +1209,7 @@ const WhotComputerUI = () => {
       isAnimating={isAnimating}
       cardListRef={cardListRef}
       onCardPress={handlePlayCard}
+      onFeedback={handleFeedback}
       onPickFromMarket={handlePickFromMarket}
       onPagingPress={handlePagingPress}
       onSuitSelect={handleSuitSelection}

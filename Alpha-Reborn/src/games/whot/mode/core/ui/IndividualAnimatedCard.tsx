@@ -8,6 +8,7 @@ import React, {
   useRef,
 } from "react";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { Vibration } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -15,14 +16,20 @@ import Animated, {
   runOnJS,
   SharedValue,
   useAnimatedReaction,
+  withSequence,
+  withRepeat,
+  withDelay,
+  interpolateColor,
 } from "react-native-reanimated";
 import { Canvas, SkFont } from "@shopify/react-native-skia";
-import { Card } from "../types"; // Make sure this path is correct
+import { Card, CardSuit, PendingAction, RuleVersion } from "../types"; // Make sure this path is correct
 import { CARD_WIDTH, CARD_HEIGHT } from "./whotConfig"; // ✅ FIX IS HERE
 import { AnimatedCard } from "./WhotCardTypes";
 import { getCoords } from "../coordinateHelper"; // Make sure this path is correct
 import { AnimatedWhotCard } from "./AnimatedWhotCard";
-import { LatencyLogger } from "./LatencyLogger";
+import { logAnimStart } from "./LatencyLogger";
+import { isValidMoveRule1 } from "../rules";
+import { isValidMoveRule2 } from "../rules2";
 
 export interface IndividualAnimatedCardHandle {
   dealTo: (
@@ -49,6 +56,15 @@ interface Props {
   height: number;
   onPress: (card: Card) => void;
   gameTickSV: SharedValue<number>;
+
+  // Validation Props
+  isMyTurnSV: SharedValue<boolean>;
+  lastCardOnPileSV: SharedValue<Card | null>;
+  pendingActionSV: SharedValue<PendingAction | null>;
+  calledSuitSV: SharedValue<CardSuit | null>;
+  ruleVersionSV: SharedValue<RuleVersion>;
+  currentPlayerIndexSV: SharedValue<number>;
+  onFeedback?: (message: string) => void;
 }
 
 // =================================================================
@@ -60,13 +76,31 @@ interface CardRendererProps {
   whotFont: SkFont;
   style: any; // The animated style
   gesture: any; // The tap gesture
+  errorGlow: SharedValue<number>;
 }
 
 const MemoizedCardRenderer = memo(
-  ({ card, font, whotFont, style, gesture }: CardRendererProps) => {
+  ({ card, font, whotFont, style, gesture, errorGlow }: CardRendererProps) => {
+    const glowStyle = useAnimatedStyle(() => ({
+      position: 'absolute',
+      top: -4,
+      left: -4,
+      right: -4,
+      bottom: -4,
+      borderWidth: 4,
+      borderColor: interpolateColor(
+        errorGlow.value,
+        [0, 1],
+        ['transparent', '#ef5350']
+      ),
+      borderRadius: 12,
+      opacity: errorGlow.value,
+    }));
+
     return (
       <GestureDetector gesture={gesture}>
         <Animated.View style={style}>
+          <Animated.View style={glowStyle} />
           <Canvas style={{ width: CARD_WIDTH, height: CARD_HEIGHT }}>
             <AnimatedWhotCard
               card={card}
@@ -96,12 +130,21 @@ const IndividualAnimatedCard = memo(
         height,
         onPress,
         gameTickSV,
+        isMyTurnSV,
+        lastCardOnPileSV,
+        pendingActionSV,
+        calledSuitSV,
+        ruleVersionSV,
+        currentPlayerIndexSV,
+        onFeedback
       },
       ref
     ) => {
       // --- Animated Values ---
       const x = useSharedValue(marketPos.x - CARD_WIDTH / 2);
       const y = useSharedValue(marketPos.y - CARD_HEIGHT / 2);
+      const shakeX = useSharedValue(0);
+      const errorGlow = useSharedValue(0);
       const rotation = useSharedValue(0); // For fanning the hand
       const zIndex = useSharedValue(1);
       const cardRotate = useSharedValue(0); // For the flip
@@ -142,7 +185,7 @@ const IndividualAnimatedCard = memo(
           const val = stagedTargetSV.value;
           if (!val) return;
 
-          runOnJS(LatencyLogger.logAnimStart)(val.timestamp);
+          runOnJS(logAnimStart)(val.timestamp);
 
           const { target, options, instant } = val;
           const {
@@ -243,6 +286,19 @@ const IndividualAnimatedCard = memo(
         },
       }));
 
+      const triggerInvalidMoveFeedback = () => {
+        "worklet";
+        shakeX.value = withSequence(
+          withTiming(-10, { duration: 50 }),
+          withRepeat(withTiming(10, { duration: 50 }), 3, true),
+          withTiming(0, { duration: 50 })
+        );
+        errorGlow.value = withSequence(
+          withTiming(1, { duration: 100 }),
+          withDelay(400, withTiming(0, { duration: 300 }))
+        );
+      };
+
       // --- Tap Gesture ---
       const tapGesture = useMemo(
         () =>
@@ -261,13 +317,52 @@ const IndividualAnimatedCard = memo(
             }
 
             if (isPlayerCard) {
-              // ⚡ STAGE TAP ANIMATION (Starts on next tick boundary)
-              stagedTargetSV.value = { target: "pile", options: {}, instant: false };
+              // --- LOCAL PRE-VALIDATION ---
 
+              // 1. Is it my turn?
+              if (!isMyTurnSV.value) {
+                triggerInvalidMoveFeedback();
+                runOnJS(Vibration.vibrate)(50);
+                if (onFeedback) runOnJS(onFeedback)("Not your turn!");
+                return;
+              }
+
+              // 2. Is move valid?
+              const topCard = lastCardOnPileSV.value;
+              if (!topCard) {
+                // If pile is empty, any card is valid (usually doesn't happen during game)
+              } else {
+                const mockState = {
+                  pile: [topCard],
+                  pendingAction: pendingActionSV.value,
+                  lastPlayedCard: topCard,
+                  calledSuit: calledSuitSV.value,
+                  currentPlayer: currentPlayerIndexSV.value,
+                  players: [], // Not needed for validation
+                  direction: 1,
+                  ruleVersion: ruleVersionSV.value,
+                  market: [],
+                  winner: null,
+                  mustPlayNormal: false
+                } as any;
+
+                const isValid = ruleVersionSV.value === 'rule1'
+                  ? isValidMoveRule1(currentCard, mockState)
+                  : isValidMoveRule2(currentCard, mockState);
+
+                if (!isValid) {
+                  triggerInvalidMoveFeedback();
+                  runOnJS(Vibration.vibrate)(50);
+                  if (onFeedback) runOnJS(onFeedback)("Invalid card for this move!");
+                  return;
+                }
+              }
+
+              // Parent handleAction will handle the animation via ImperativeHandle
               runOnJS(handleCardPress)(currentCard);
             }
           }),
-        [cardSV, playerHandIdsSV, handleCardPress, width, height]
+        [cardSV, playerHandIdsSV, handleCardPress, width, height, isMyTurnSV, lastCardOnPileSV, pendingActionSV, calledSuitSV, ruleVersionSV, currentPlayerIndexSV, onFeedback]
       );
 
       // --- Animated Style ---
@@ -276,7 +371,7 @@ const IndividualAnimatedCard = memo(
         width: CARD_WIDTH,
         height: CARD_HEIGHT,
         transform: [
-          { translateX: x.value },
+          { translateX: x.value + shakeX.value },
           { translateY: y.value },
           { rotate: `${rotation.value}deg` },
         ] as any,
@@ -309,6 +404,7 @@ const IndividualAnimatedCard = memo(
           whotFont={whotFont}
           style={animatedStyle}
           gesture={tapGesture}
+          errorGlow={errorGlow}
         />
       );
     }

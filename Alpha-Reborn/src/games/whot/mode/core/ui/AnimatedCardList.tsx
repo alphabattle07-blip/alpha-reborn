@@ -8,8 +8,8 @@ import React, {
   useEffect,
 } from "react";
 import { SkFont } from "@shopify/react-native-skia";
+import { Card, CardSuit, PendingAction, RuleVersion } from "../types"; // Make sure this path is correct
 import { SharedValue } from "react-native-reanimated";
-import { Card } from "../types"; // Make sure this path is correct
 import { getCoords } from "../coordinateHelper"; // Make sure this path is correct
 import IndividualAnimatedCard, {
   IndividualAnimatedCardHandle,
@@ -26,6 +26,15 @@ interface Props {
   onCardPress: (card: Card) => void;
   onReady: () => void;
   gameTickSV: SharedValue<number>;
+
+  // Validation Props
+  isMyTurnSV: SharedValue<boolean>;
+  lastCardOnPileSV: SharedValue<Card | null>;
+  pendingActionSV: SharedValue<PendingAction | null>;
+  calledSuitSV: SharedValue<CardSuit | null>;
+  ruleVersionSV: SharedValue<RuleVersion>;
+  currentPlayerIndexSV: SharedValue<number>;
+  onFeedback?: (message: string) => void;
 }
 
 // Public handle for WhotComputerGameScreen
@@ -59,6 +68,13 @@ const AnimatedCardList = memo(
         onCardPress,
         onReady,
         gameTickSV,
+        isMyTurnSV,
+        lastCardOnPileSV,
+        pendingActionSV,
+        calledSuitSV,
+        ruleVersionSV,
+        currentPlayerIndexSV,
+        onFeedback,
       },
       ref
     ) => {
@@ -83,7 +99,7 @@ const AnimatedCardList = memo(
 
       // --- Public API for the parent component ---
       useImperativeHandle(ref, () => ({
-        dealCard: async (card, target, options, instant, timestamp) => {
+        dealCard: async (card: Card, target: any, options: any, instant: any, timestamp: any) => {
           const cardRef = cardRefs.current.get(card.id);
           if (cardRef) {
             await cardRef.dealTo(target, options, instant, timestamp);
@@ -91,7 +107,7 @@ const AnimatedCardList = memo(
             console.warn(`No ref found for card ${card.id} during deal.`);
           }
         },
-        flipCard: async (card, show) => {
+        flipCard: async (card: Card, show: boolean) => {
           const cardRef = cardRefs.current.get(card.id);
           if (cardRef) {
             await cardRef.flip(show);
@@ -99,7 +115,7 @@ const AnimatedCardList = memo(
             console.warn(`No ref found for card ${card.id} during flip.`);
           }
         },
-        teleportCard: (card, target, options, timestamp) => {
+        teleportCard: (card: Card, target: any, options: any, timestamp: any) => {
           const cardRef = cardRefs.current.get(card.id);
           if (cardRef) {
             cardRef.teleportTo(target, options, timestamp);
@@ -134,6 +150,13 @@ const AnimatedCardList = memo(
               height={height}
               onPress={onCardPress}
               gameTickSV={gameTickSV}
+              isMyTurnSV={isMyTurnSV}
+              lastCardOnPileSV={lastCardOnPileSV}
+              pendingActionSV={pendingActionSV}
+              calledSuitSV={calledSuitSV}
+              ruleVersionSV={ruleVersionSV}
+              currentPlayerIndexSV={currentPlayerIndexSV}
+              onFeedback={onFeedback}
             />
           ))}
         </>

@@ -43,6 +43,7 @@ export type WhotCoreUIProps = {
     isAnimating: boolean;
     cardListRef: React.RefObject<AnimatedCardListHandle>;
     onCardPress: (card: Card) => void;
+    onFeedback?: (message: string) => void;
     onPickFromMarket: () => void;
     onPagingPress: () => void;
     onSuitSelect: (suit: CardSuit) => void;
@@ -79,6 +80,7 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
     isAnimating,
     cardListRef,
     onCardPress,
+    onFeedback,
     onPickFromMarket,
     onPagingPress,
     onSuitSelect,
@@ -98,6 +100,14 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
     const gameTickSV = useSharedValue(0);
     const lastTickTimeRef = useRef(0);
 
+    // Validation SharedValues
+    const isMyTurnSV = useSharedValue(playerState.isCurrentPlayer);
+    const lastCardOnPileSV = useSharedValue<Card | null>(game?.gameState?.lastPlayedCard || null);
+    const pendingActionSV = useSharedValue(game?.gameState?.pendingAction || null);
+    const calledSuitSV = useSharedValue(activeCalledSuit);
+    const ruleVersionSV = useSharedValue(game?.gameState?.ruleVersion || 'rule1');
+    const currentPlayerIndexSV = useSharedValue(game?.gameState?.currentPlayer || 0);
+
     useFrameCallback((frameInfo) => {
         const { timestamp } = frameInfo;
         if (timestamp - lastTickTimeRef.current >= 33.3) { // 30Hz
@@ -105,6 +115,31 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
             lastTickTimeRef.current = timestamp;
         }
     });
+
+    // 🔄 SYNC React State to SharedValues
+    React.useEffect(() => {
+        isMyTurnSV.value = playerState.isCurrentPlayer;
+    }, [playerState.isCurrentPlayer]);
+
+    React.useEffect(() => {
+        lastCardOnPileSV.value = game?.gameState?.lastPlayedCard || null;
+    }, [game?.gameState?.lastPlayedCard]);
+
+    React.useEffect(() => {
+        pendingActionSV.value = game?.gameState?.pendingAction || null;
+    }, [game?.gameState?.pendingAction]);
+
+    React.useEffect(() => {
+        calledSuitSV.value = activeCalledSuit;
+    }, [activeCalledSuit]);
+
+    React.useEffect(() => {
+        ruleVersionSV.value = game?.gameState?.ruleVersion || 'rule1';
+    }, [game?.gameState?.ruleVersion]);
+
+    React.useEffect(() => {
+        currentPlayerIndexSV.value = game?.gameState?.currentPlayer || 0;
+    }, [game?.gameState?.currentPlayer]);
 
     const pileCoords = useMemo(() => {
         return getCoords("pile", { cardIndex: 0 }, stableWidth, stableHeight);
@@ -247,6 +282,13 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                     onCardPress={onCardPress}
                     onReady={onCardListReady}
                     gameTickSV={gameTickSV}
+                    isMyTurnSV={isMyTurnSV}
+                    lastCardOnPileSV={lastCardOnPileSV}
+                    pendingActionSV={pendingActionSV}
+                    calledSuitSV={calledSuitSV}
+                    ruleVersionSV={ruleVersionSV}
+                    currentPlayerIndexSV={currentPlayerIndexSV}
+                    onFeedback={onFeedback}
                 />
             )}
 
