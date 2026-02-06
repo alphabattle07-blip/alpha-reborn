@@ -25,16 +25,11 @@ export const calculateHandScore = (hand: Card[]): number => {
 };
 
 /**
- * Handles the Game Over state when the Market is empty in Rule 2.
- * The player with the LOWEST score wins.
- */
-
-/**
  * Triggers the "Market Exhausted" state in Rule 2.
  * This pauses the game to show scores before declaring a winner.
  */
 const triggerMarketExhaustion = (state: GameState): GameState => {
-  console.log("🚫 Market Empty in Rule 2! Triggering score display...");
+  /* console.log("🚫 Market Empty in Rule 2! Triggering score display..."); */
 
   return {
     ...state,
@@ -49,7 +44,7 @@ const triggerMarketExhaustion = (state: GameState): GameState => {
  * Calculates scores and declares the winner.
  */
 export const finalizeMarketExhaustion = (state: GameState): GameState => {
-  console.log("🏁 Finalizing Market Exhaustion... Calculating scores.");
+  /* console.log("🏁 Finalizing Market Exhaustion... Calculating scores."); */
 
   // Calculate scores for all players
   const playersWithScores = state.players.map((p) => ({
@@ -61,9 +56,9 @@ export const finalizeMarketExhaustion = (state: GameState): GameState => {
   playersWithScores.sort((a, b) => a.score - b.score);
 
   const winner = playersWithScores[0].player;
-  const winnerScore = playersWithScores[0].score;
+  // const winnerScore = playersWithScores[0].score;
 
-  console.log(`🏆 Market Runout! Winner: ${winner.name} with score ${winnerScore}`);
+  /* console.log(`🏆 Market Runout! Winner: ${winner.name} with score ${winnerScore}`); */
 
   return {
     ...state,
@@ -84,10 +79,6 @@ const reshufflePileIntoMarket = (
   const topCard = pile[pile.length - 1];
   const cardsToShuffle = pile.slice(0, pile.length - 1);
   const newMarket = shuffleDeck(cardsToShuffle);
-
-  console.log(
-    `♻️ Reshuffling ${cardsToShuffle.length} cards from pile to market.`
-  );
 
   return { newPile: [topCard], newMarket: newMarket };
 };
@@ -210,7 +201,7 @@ export const pickCard = (
   state: GameState,
   playerIndex: number
 ): { newState: GameState; drawnCards: Card[] } => {
-  const { pendingAction, pendingPick } = state;
+  const { pendingAction } = state;
 
   // --- Rule 2 Logic ---
   if (state.ruleVersion === "rule2") {
@@ -231,7 +222,7 @@ export const pickCard = (
     }
 
     // Case C: Normal Draw
-    const drawnCards = market.splice(0, 1); // Draw 1
+    const drawnCards = market.splice(0, 1);
     const newHand = [...drawnCards, ...state.players[playerIndex].hand];
 
     const nextPlayer = (playerIndex + state.direction + state.players.length) % state.players.length;
@@ -241,13 +232,16 @@ export const pickCard = (
       preservedPendingAction = state.pendingAction;
     }
 
+    // --- OPTIMIZATION START ---
+    const newPlayers = [...state.players];
+    newPlayers[playerIndex] = { ...state.players[playerIndex], hand: newHand };
+    // --- OPTIMIZATION END ---
+
     // Create the state with the new hand
     const stateWithCardDrawn = {
       ...state,
       market,
-      players: state.players.map((p, idx) =>
-        idx === playerIndex ? { ...p, hand: newHand } : p
-      ),
+      players: newPlayers,
       currentPlayer: nextPlayer, // Draw always ends turn in Rule 2
       pendingAction: preservedPendingAction,
       lastPlayedCard: null,
@@ -269,18 +263,14 @@ export const pickCard = (
     pendingAction.playerIndex === playerIndex
   ) {
     // ✅ FIX: Convert "defend" to "draw" logic
-    // This tells the UI: "The player accepted defeat, now force them to draw."
     const newState: GameState = {
       ...state,
       pendingAction: {
         ...pendingAction,
-        type: "draw", // Switch type
-        // Preserve count, playerIndex, and returnTurnTo
+        type: "draw",
       } as any,
     };
 
-    // We return drawnCards as empty [] because the UI's 
-    // runForcedDrawSequence will handle the actual drawing animation.
     return { newState, drawnCards: [] };
   }
 
@@ -293,8 +283,6 @@ export const pickCard = (
 
     // ✅ If market is empty, return early. The UI will handle the reshuffle.
     if (market.length === 0) {
-      // The user can't draw, but we pass the turn if they were supposed to.
-      // This prevents the game from getting stuck.
       const newState = {
         ...state,
         currentPlayer:
@@ -310,12 +298,15 @@ export const pickCard = (
     const drawnCards = market.splice(0, 1);
     const newHand = [...drawnCards, ...state.players[playerIndex].hand];
 
+    // --- OPTIMIZATION START ---
+    const newPlayers = [...state.players];
+    newPlayers[playerIndex] = { ...state.players[playerIndex], hand: newHand };
+    // --- OPTIMIZATION END ---
+
     const newState: GameState = {
       ...state,
       market,
-      players: state.players.map((p, idx) =>
-        idx === playerIndex ? { ...p, hand: newHand } : p
-      ),
+      players: newPlayers,
       currentPlayer:
         (playerIndex + state.direction + state.players.length) %
         state.players.length,
@@ -384,8 +375,6 @@ export const executeForcedDraw = (
   // If market is ALREADY empty, let the auto-refill handle it.
   if (state.market.length === 0) {
     console.log("Market is empty during a forced draw. Waiting for refill.");
-    // We don't change state here, just signal that no card was drawn.
-    // The pendingAction remains, and the game will re-evaluate.
     return { newState: state, drawnCard: null };
   }
 
@@ -395,6 +384,11 @@ export const executeForcedDraw = (
   const newHand = [drawnCard, ...state.players[playerIndex].hand];
   const remainingCount = count - 1;
 
+  // --- OPTIMIZATION START ---
+  const newPlayers = [...state.players];
+  newPlayers[playerIndex] = { ...state.players[playerIndex], hand: newHand };
+  // --- OPTIMIZATION END ---
+
   // ✅ CHECK IF MARKET BECAME EMPTY AFTER THIS DRAW
   if (state.ruleVersion === "rule2" && market.length === 0) {
     console.log("⚡ Market just ran out during forced draw! Ending game...");
@@ -402,9 +396,7 @@ export const executeForcedDraw = (
     const tempState: GameState = {
       ...state,
       market,
-      players: state.players.map((p, idx) =>
-        idx === playerIndex ? { ...p, hand: newHand } : p
-      ),
+      players: newPlayers,
     };
 
     const endGameState = triggerMarketExhaustion(tempState);
@@ -422,9 +414,7 @@ export const executeForcedDraw = (
     const newState: GameState = {
       ...state,
       market,
-      players: state.players.map((p, idx) =>
-        idx === playerIndex ? { ...p, hand: newHand } : p
-      ),
+      players: newPlayers,
       pendingAction: newPendingAction,
     };
     return { newState, drawnCard };
@@ -435,9 +425,7 @@ export const executeForcedDraw = (
     const newState: GameState = {
       ...state,
       market,
-      players: state.players.map((p, idx) =>
-        idx === playerIndex ? { ...p, hand: newHand } : p
-      ),
+      players: newPlayers,
       currentPlayer: nextPlayer,
       pendingAction: null,
       lastPlayedCard: null,
@@ -461,6 +449,3 @@ export const getReshuffledState = (state: GameState): GameState => {
     market: newMarket,
   };
 };
-
-
-

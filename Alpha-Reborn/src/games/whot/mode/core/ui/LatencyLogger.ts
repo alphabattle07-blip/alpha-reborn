@@ -5,7 +5,7 @@
  */
 
 // 📝 Logging Level (Set to false for production)
-const DEBUG = true;
+const DEBUG = false;
 
 // 🕒 Metric Storage (Separate from the exported object to avoid Worklet mutation warnings)
 let lastTap = 0;

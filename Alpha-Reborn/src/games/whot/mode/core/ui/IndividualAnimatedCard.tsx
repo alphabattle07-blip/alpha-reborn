@@ -162,27 +162,10 @@ const IndividualAnimatedCard = memo(
         timestamp: number;
       } | null>(null);
 
-      // 🕒 STAGED TARGET (Buffered until next tick)
-      const stagedTargetSV = useSharedValue<{
-        target: "player" | "computer" | "pile" | "market";
-        options?: any;
-        instant?: boolean;
-        timestamp?: number;
-      } | null>(null);
-
-      // React to target signals (from JS) by staging them
+      // ⚡ IMMEDIATE REACTION (No tick throttling)
       useAnimatedReaction(
         () => targetSV.value,
         (val) => {
-          if (val) stagedTargetSV.value = val;
-        }
-      );
-
-      // 💓 TICK BOUNDARY EXECUTION
-      useAnimatedReaction(
-        () => gameTickSV.value,
-        () => {
-          const val = stagedTargetSV.value;
           if (!val) return;
 
           runOnJS(logAnimStart)(val.timestamp);
@@ -217,7 +200,6 @@ const IndividualAnimatedCard = memo(
             let adjustedDuration = BASELINE_DURATION;
             if (val.timestamp) {
               const lag = Date.now() - val.timestamp;
-              // If lag is significant, compress the duration to catch up
               if (lag > 0) {
                 adjustedDuration = Math.max(MIN_DURATION, BASELINE_DURATION - lag);
               }
@@ -234,8 +216,6 @@ const IndividualAnimatedCard = memo(
               }
             });
           }
-
-          stagedTargetSV.value = null; // Clear stage
         },
         [width, height]
       );

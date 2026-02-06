@@ -162,7 +162,25 @@ const AnimatedCardList = memo(
         </>
       );
     }
-  )
+  ),
+  (prev, next) => {
+    // Custom comparison for AnimatedCardList
+    // Since cards are keyed by ID and their presence in 'cardsInPlay' determines mounting,
+    // we strictly check if the *list of IDs* changed.
+    // If props like fonts or dimensions change, we re-render.
+    if (prev.width !== next.width || prev.height !== next.height) return false;
+    if (prev.font !== next.font || prev.whotFont !== next.whotFont) return false;
+
+    // Check if card list length or IDs changed (shallow ref check usually enough for Redux, but be safe)
+    if (prev.cardsInPlay === next.cardsInPlay) return true;
+    if (prev.cardsInPlay.length !== next.cardsInPlay.length) return false;
+
+    // Deep check IDs if needed, but for performance, we rely on immutable state updates
+    // for `cardsInPlay` array reference changes.
+    // If the reference is different but content is same, we might re-render, 
+    // but that's better than deep comparing 54 items every time.
+    return false;
+  }
 );
 export default AnimatedCardList;
 
