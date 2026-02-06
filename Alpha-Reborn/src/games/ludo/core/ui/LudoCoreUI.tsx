@@ -68,8 +68,8 @@ const DiceHouse = ({ dice, diceUsed, onPress, waitingForRoll, rankIcon, disabled
         activeOpacity={0.8}
     >
         <View style={styles.diceRow}>
-            {dice.length > 0 ? (
-                dice.map((d, i) => (
+            {dice?.length > 0 ? (
+                (dice || []).map((d, i) => (
                     <Ludo3DDie
                         key={i}
                         value={d}
@@ -141,7 +141,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
 
         gameState.players.forEach((p) => {
             const isP1 = p.id === 'p1';
-            posMap[p.id] = p.seeds.map((s, idx) => {
+            posMap[p.id] = (p.seeds || []).map((s, idx) => {
                 const seedCanMove = showHumanIndicators && isP1 && currentValidMoves.some(m => m.seedIndex === idx);
                 return {
                     pos: s.position,
