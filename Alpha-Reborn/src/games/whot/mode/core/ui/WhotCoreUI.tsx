@@ -294,6 +294,7 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
 
             {activeCalledSuit && (
                 <ActiveSuitCard
+                    key={activeCalledSuit}
                     suit={activeCalledSuit}
                     x={pileCoords.x}
                     y={pileCoords.y}

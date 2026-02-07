@@ -602,6 +602,14 @@ const WhotOnlineUI = () => {
           let state = currentBaseState;
           let animPromise: Promise<void> | undefined;
 
+          // 🔥 FIX: If remote says FORCED_DRAW but we are in 'defend', convert it to 'draw' first
+          if (state.pendingAction?.type === 'defend' && state.pendingAction.playerIndex === oppIndex) {
+            state = {
+              ...state,
+              pendingAction: { ...state.pendingAction, type: 'draw' } as any
+            };
+          }
+
           const pending = state.pendingAction;
           if (pending?.type === 'draw' && pending.playerIndex === oppIndex) {
             animPromise = (async () => {
@@ -718,8 +726,8 @@ const WhotOnlineUI = () => {
   const onPickFromMarket = () => {
     if (visualGameState?.currentPlayer !== 0) return;
 
-    // 🔥 FIX: Check against 0
-    const isSurrender = visualGameState?.pendingAction?.type === 'draw' && visualGameState?.pendingAction.playerIndex === 0;
+    // 🔥 FIX: Surrender happens if pending action is 'draw' OR 'defend' for player 0
+    const isSurrender = (visualGameState?.pendingAction?.type === 'draw' || visualGameState?.pendingAction?.type === 'defend') && visualGameState?.pendingAction.playerIndex === 0;
 
     const socketAction: WhotGameAction = isSurrender
       ? { type: 'FORCED_DRAW', timestamp: Date.now() }
@@ -800,12 +808,10 @@ const WhotOnlineUI = () => {
   };
 
   const onSuitSelect = (suit: CardSuit) => {
-    console.log("🎨 Suit Selected:", suit);
     setIsSuitSelectorOpen(false);
     handleAction(async (baseState) => {
       // Always use visual index 0 for local player
       const newState = callSuit(baseState, 0, suit);
-      console.log("🎨 New State calledSuit:", newState.calledSuit);
       return newState;
     }, { type: 'CALL_SUIT', suit, timestamp: Date.now() });
   };
@@ -930,10 +936,6 @@ const WhotOnlineUI = () => {
   }
 
   const opponent = needsRotation ? currentGame.player1 : currentGame.player2;
-
-  if (visualGameState?.calledSuit) {
-    console.log("🎨 RENDER: Active Suit =", visualGameState.calledSuit);
-  }
 
   return (
     <WhotCoreUI

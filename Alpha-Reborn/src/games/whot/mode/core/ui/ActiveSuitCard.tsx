@@ -102,27 +102,29 @@ const ActiveSuitCard = ({ suit, x, y, font }: ActiveSuitCardProps) => {
     >
       <Canvas style={{ width: CARD_WIDTH, height: CARD_HEIGHT }}>
         <Group>
-          {/* 1. Solid White Background to cover the card below */}
-          <RoundedRect x={0} y={0} width={CARD_WIDTH} height={CARD_HEIGHT} r={8} color="white" />
+          {/* 1. NO Solid White Background - we want to see the card below */}
 
-          {/* 2. Red Border */}
+          {/* 2. Delicate Rounded Outline to define the shape area */}
           <RoundedRect
-            x={1}
-            y={1}
-            width={CARD_WIDTH - 2}
-            height={CARD_HEIGHT - 2}
+            x={2}
+            y={2}
+            width={CARD_WIDTH - 4}
+            height={CARD_HEIGHT - 4}
             r={8}
             color={COLOR_RED}
             style="stroke"
-            strokeWidth={1.5}
+            strokeWidth={1}
+            opacity={0.3}
           />
 
           {/* Top Left "20" */}
           <SkText x={padding} y={padding + 10} text="20" font={font} color={COLOR_RED} />
           <ShapeIcon suit={suit} x={padding + textWidth / 2} y={padding + 18} size={8} />
 
-          {/* Center Main Shape */}
-          <ShapeIcon suit={suit} x={centerX} y={centerY} size={26} />
+          {/* Center Main Shape - Made larger for visibility */}
+          <Group opacity={0.8}>
+            <ShapeIcon suit={suit} x={centerX} y={centerY} size={32} />
+          </Group>
 
           {/* Bottom Right "20" (Rotated) */}
           <Group origin={{ x: centerX, y: centerY }} transform={[{ rotate: Math.PI }]}>
