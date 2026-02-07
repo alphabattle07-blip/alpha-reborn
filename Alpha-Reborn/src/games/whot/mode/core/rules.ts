@@ -192,6 +192,7 @@ export const applyCardEffectRule1 = (
       newState.currentPlayer = getNextPlayerIndex(1);
       newState.pendingAction = null;
       newState.lastPlayedCard = null;
+      newState.calledSuit = undefined; // ✅ FIX: Clear called suit after valid play
       break;
   }
 

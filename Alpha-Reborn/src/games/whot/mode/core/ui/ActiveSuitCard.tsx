@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    zIndex: 40, // Lower than pile cards (50+) so new cards render ON TOP
+    zIndex: 500, // ✅ Above pile cards (100+) and hand cards (100+)
     // Optional: Add shadow to match your game cards for realism
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },

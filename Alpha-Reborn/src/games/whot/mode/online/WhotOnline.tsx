@@ -799,10 +799,12 @@ const WhotOnlineUI = () => {
   };
 
   const onSuitSelect = (suit: CardSuit) => {
+    console.log("🎨 Suit Selected:", suit);
     setIsSuitSelectorOpen(false);
     handleAction(async (baseState) => {
       // Always use visual index 0 for local player
       const newState = callSuit(baseState, 0, suit);
+      console.log("🎨 New State calledSuit:", newState.calledSuit);
       return newState;
     }, { type: 'CALL_SUIT', suit, timestamp: Date.now() });
   };
@@ -927,6 +929,10 @@ const WhotOnlineUI = () => {
   }
 
   const opponent = needsRotation ? currentGame.player1 : currentGame.player2;
+
+  if (visualGameState?.calledSuit) {
+    console.log("🎨 RENDER: Active Suit =", visualGameState.calledSuit);
+  }
 
   return (
     <WhotCoreUI
