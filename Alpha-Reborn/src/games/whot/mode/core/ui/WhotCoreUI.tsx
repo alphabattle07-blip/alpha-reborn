@@ -413,4 +413,38 @@ const styles = StyleSheet.create({
     scoreText: { color: "#FFFFFF", fontSize: 18, fontWeight: "bold" },
 });
 
-export default WhotCoreUI;
+// MEMOIZATION: Only re-render if visual layout props or game ID change.
+// We intentionally IGNORE 'game', 'playerState', 'opponentState' object reference changes
+// because we rely on SharedValues for the data updates, or we only want to re-render 
+// if specific fields like 'marketCardCount' change.
+export default React.memo(WhotCoreUI, (prev, next) => {
+    // 1. Layout & Stability Props (Must match)
+    if (prev.gameInstanceId !== next.gameInstanceId) return false;
+
+    // Fix: Interface uses stableWidth/stableHeight, not width/height directly in some cases
+    if (prev.stableWidth !== next.stableWidth || prev.stableHeight !== next.stableHeight) return false;
+
+    // Check if fonts changed
+    if (prev.stableFont !== next.stableFont || prev.stableWhotFont !== next.stableWhotFont) return false;
+
+    if (prev.isLandscape !== next.isLandscape) return false;
+
+    // 2. High-Level Game Flags
+    if (prev.isAnimating !== next.isAnimating) return false;
+    if (prev.showSuitSelector !== next.showSuitSelector) return false;
+    if (prev.marketCardCount !== next.marketCardCount) return false;
+    if (prev.activeCalledSuit !== next.activeCalledSuit) return false;
+    if (prev.showPagingButton !== next.showPagingButton) return false;
+
+    // 3. Game Over State
+    if (prev.gameOver !== next.gameOver) return false;
+
+    // 4. IGNORE unstable object props:
+    // - game
+    // - playerState
+    // - opponentState
+    // - onCardPress (should be stable ref, but even if not, we rely on AnimatedCardList reading it properly)
+    // - allCards (AnimatedCardList checks card IDs internally)
+
+    return true; // Props relevant to LAYOUT are identical.
+});
