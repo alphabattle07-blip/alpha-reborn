@@ -564,9 +564,10 @@ const WhotOnlineUI = () => {
                 // Opponent attacked ME (Player 0)
                 const myHand = finalState.players[0].hand;
                 await dealer.dealCard(drawnCard, "player", {
-                  cardIndex: myHand.length - 1,
-                  handSize: myHand.length > 5 ? 5 : myHand.length
+                  cardIndex: 0,
+                  handSize: 5
                 }, false);
+                await dealer.flipCard(drawnCard, true);
               };
               // Chain animations if needed
               animPromise = animPromise ? animPromise.then(subAnim) : subAnim();
@@ -620,8 +621,8 @@ const WhotOnlineUI = () => {
                   dealer.teleportCard(drawnCard, "market", { cardIndex: 0 }, action.timestamp);
                   await new Promise(r => setTimeout(r, 40));
                   await dealer.dealCard(drawnCard, "computer", {
-                    cardIndex: tempState.players[1].hand.length - 1,
-                    handSize: tempState.players[1].hand.length
+                    cardIndex: 0,
+                    handSize: 5
                   }, false, action.timestamp);
                 }
               }
@@ -692,8 +693,8 @@ const WhotOnlineUI = () => {
               // Visual Opponent is ALWAYS 1.
               const oppHand = stateAfterDraw.players[1].hand;
               await dealer.dealCard(drawnCard, "computer", {
-                cardIndex: oppHand.length - 1,
-                handSize: oppHand.length
+                cardIndex: 0,
+                handSize: 5
               }, false);
             };
             animPromise = animPromise ? animPromise.then(subAnim) : subAnim();
