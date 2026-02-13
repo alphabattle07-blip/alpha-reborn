@@ -412,11 +412,7 @@ const WhotOnlineUI = () => {
       const hiddenHand = myHand.slice(layoutHandSize);
 
       visibleHand.forEach((c, i) => {
-        const isLastVisibleSlot = i === layoutHandSize - 1;
-        const zIndexOverride = isLastVisibleSlot
-          ? (myHand.length > layoutHandSize ? 90 : 105)
-          : 100 + i;
-        dealer.teleportCard(c, "player", { cardIndex: i, handSize: layoutHandSize, zIndex: zIndexOverride });
+        dealer.teleportCard(c, "player", { cardIndex: i, handSize: layoutHandSize });
       });
       hiddenHand.forEach((c) => {
         // Stack behind the last visible card (index 5) with a lower zIndex
@@ -584,14 +580,9 @@ const WhotOnlineUI = () => {
 
                 const myHand = finalState.players[0].hand;
                 const animPromises = myHand.slice(0, layoutHandSize).map((c, idx) => {
-                  const isLastVisibleSlot = idx === layoutHandSize - 1;
-                  const zIndexOverride = isLastVisibleSlot
-                    ? (myHand.length > layoutHandSize ? 90 : 105)
-                    : 100 + idx;
                   return dealer.dealCard(c, "player", {
                     cardIndex: idx,
                     handSize: layoutHandSize,
-                    zIndex: zIndexOverride
                   }, false);
                 });
                 animPromises.push(dealer.flipCard(drawnCard, true));
@@ -618,14 +609,9 @@ const WhotOnlineUI = () => {
 
               const oppHand = newState.players[1].hand;
               const animPromises = oppHand.slice(0, layoutHandSize).map((c, idx) => {
-                const isLastVisibleSlot = idx === layoutHandSize - 1;
-                const zIndexOverride = isLastVisibleSlot
-                  ? (oppHand.length > layoutHandSize ? 90 : 205)
-                  : 200 + idx;
                 return dealer.dealCard(c, "computer", {
                   cardIndex: idx,
                   handSize: layoutHandSize,
-                  zIndex: zIndexOverride
                 }, false, action.timestamp);
               });
               await Promise.all(animPromises);
@@ -673,14 +659,9 @@ const WhotOnlineUI = () => {
 
                   const oppHand = tempState.players[1].hand;
                   const animPromises = oppHand.slice(0, layoutHandSize).map((c, idx) => {
-                    const isLastVisibleSlot = idx === layoutHandSize - 1;
-                    const zIndexOverride = isLastVisibleSlot
-                      ? (oppHand.length > layoutHandSize ? 90 : 205)
-                      : 200 + idx;
                     return dealer.dealCard(c, "computer", {
                       cardIndex: idx,
                       handSize: layoutHandSize,
-                      zIndex: zIndexOverride
                     }, false, action.timestamp);
                   });
                   await Promise.all(animPromises);
@@ -751,14 +732,9 @@ const WhotOnlineUI = () => {
 
               const oppHand = stateAfterDraw.players[1].hand;
               const animPromises = oppHand.slice(0, layoutHandSize).map((c, idx) => {
-                const isLastVisibleSlot = idx === layoutHandSize - 1;
-                const zIndexOverride = isLastVisibleSlot
-                  ? (oppHand.length > layoutHandSize ? 90 : 205)
-                  : 200 + idx;
                 return dealer.dealCard(c, "computer", {
                   cardIndex: idx,
                   handSize: layoutHandSize,
-                  zIndex: zIndexOverride
                 }, false);
               });
               await Promise.all(animPromises);
@@ -836,14 +812,9 @@ const WhotOnlineUI = () => {
 
                 const myHand = nextStepS.players[0].hand;
                 const animPromises = myHand.slice(0, layoutHandSize).map((c, idx) => {
-                  const isLastVisibleSlot = idx === layoutHandSize - 1;
-                  const zIndexOverride = isLastVisibleSlot
-                    ? (myHand.length > layoutHandSize ? 90 : 105)
-                    : 100 + idx;
                   return dealer.dealCard(c, "player", {
                     cardIndex: idx,
                     handSize: layoutHandSize,
-                    zIndex: zIndexOverride
                   }, false);
                 });
                 animPromises.push(dealer.flipCard(card, true));
@@ -871,14 +842,9 @@ const WhotOnlineUI = () => {
 
             const myHand = newState.players[0].hand;
             const animPromises = myHand.slice(0, layoutHandSize).map((c, idx) => {
-              const isLastVisibleSlot = idx === layoutHandSize - 1;
-              const zIndexOverride = isLastVisibleSlot
-                ? (myHand.length > layoutHandSize ? 90 : 105)
-                : 100 + idx;
               return dealer.dealCard(c, "player", {
                 cardIndex: idx,
                 handSize: layoutHandSize,
-                zIndex: zIndexOverride
               }, false);
             });
             animPromises.push(dealer.flipCard(card, true));
@@ -915,11 +881,7 @@ const WhotOnlineUI = () => {
       };
       const animationPromises: Promise<void>[] = [];
       rotatedHand.slice(0, layoutHandSize).forEach((c, idx) => {
-        const isLastVisibleSlot = idx === layoutHandSize - 1;
-        const zIndexOverride = isLastVisibleSlot
-          ? (rotatedHand.length > layoutHandSize ? 90 : 105)
-          : 100 + idx;
-        animationPromises.push(dealer.dealCard(c, "player", { cardIndex: idx, handSize: layoutHandSize, zIndex: zIndexOverride }, false));
+        animationPromises.push(dealer.dealCard(c, "player", { cardIndex: idx, handSize: layoutHandSize }, false));
       });
       if (rotatedHand.length > layoutHandSize) {
         const cardLeaving = rotatedHand[layoutHandSize];
@@ -949,11 +911,7 @@ const WhotOnlineUI = () => {
       dealPromises.push(dealer.dealCard(h2[i], "computer", { cardIndex: i, handSize: h2.length }, false));
     }
     for (let i = 0; i < visiblePlayerHand.length; i++) {
-      const isLastVisibleSlot = i === layoutHandSize - 1;
-      const zIndexOverride = isLastVisibleSlot
-        ? (h1.length > layoutHandSize ? 90 : 105)
-        : 100 + i;
-      dealPromises.push(dealer.dealCard(visiblePlayerHand[i], "player", { cardIndex: i, handSize: layoutHandSize, zIndex: zIndexOverride }, false));
+      dealPromises.push(dealer.dealCard(visiblePlayerHand[i], "player", { cardIndex: i, handSize: layoutHandSize }, false));
     }
     for (const card of hiddenPlayerHand) {
       dealer.dealCard(card, "player", { cardIndex: 5, handSize: layoutHandSize, zIndex: 90 }, true);
