@@ -12,7 +12,7 @@ import WhotCoreUI from '../core/ui/WhotCoreUI';
 import { useWhotFonts } from '../core/ui/useWhotFonts';
 import { Card, CardSuit, GameState, WhotGameAction } from '../core/types';
 import { useSharedValue } from 'react-native-reanimated';
-import { playCard, pickCard, callSuit, executeForcedDraw } from '../core/game';
+import { playCard, pickCard, callSuit, executeForcedDraw, getReshuffledState } from '../core/game';
 import { socketService } from '../../../../services/api/socketService';
 import { WhotAssetManager } from '../core/ui/WhotAssetManager';
 import { logTap, logEmit } from '../core/ui/LatencyLogger';
@@ -82,6 +82,9 @@ const WhotOnlineUI = () => {
   const isPlayer2 = currentGame?.player2?.id === userProfile?.id;
   const needsRotation = isPlayer2;
   const myLogicalIndex = needsRotation ? 1 : 0;
+
+  const playerHandLimit = 5;
+  const layoutHandSize = 6;
 
   // --- MATCHMAKING ---
   const [isMatchmaking, setIsMatchmaking] = useState(false);
@@ -405,19 +408,23 @@ const WhotOnlineUI = () => {
       });
 
       const myHand = visualGameState.players[0].hand || [];
-      myHand.forEach((c, i) => {
-        if (i < 5) {
-          const stableHandSize = myHand.length > 5 ? 5 : myHand.length;
-          dealer.teleportCard(c, "player", { cardIndex: i, handSize: stableHandSize });
-        } else {
-          dealer.teleportCard(c, "player", { cardIndex: -100, handSize: 5 });
-        }
+      const visibleHand = myHand.slice(0, layoutHandSize);
+      const hiddenHand = myHand.slice(layoutHandSize);
+
+      visibleHand.forEach((c, i) => {
+        const isLastVisibleSlot = i === layoutHandSize - 1;
+        const zIndexOverride = isLastVisibleSlot
+          ? (myHand.length > layoutHandSize ? 90 : 105)
+          : 100 + i;
+        dealer.teleportCard(c, "player", { cardIndex: i, handSize: layoutHandSize, zIndex: zIndexOverride });
+      });
+      hiddenHand.forEach((c) => {
+        // Stack behind the last visible card (index 5) with a lower zIndex
+        dealer.teleportCard(c, "player", { cardIndex: 5, handSize: layoutHandSize, zIndex: 90 });
       });
     });
 
   }, [visualGameState, hasDealt, isAnimating]);
-
-  // --- 10. ACTION HANDLING (With Timestamp Locking) ---
 
   // --- 10. ACTION HANDLING (QUEUED) ---
   const processActionQueue = async () => {
@@ -436,6 +443,28 @@ const WhotOnlineUI = () => {
     }
     isProcessingQueueRef.current = false;
   };
+
+  const animateReshuffle = useCallback(async () => {
+    const dealer = cardListRef.current;
+    if (!dealer || !visualGameState) return;
+
+    const { pile } = visualGameState;
+    if (pile.length <= 1) return;
+
+    console.log("♻️ Animation: Moving pile cards back to market...");
+    const cardsToMove = pile.slice(0, pile.length - 1);
+
+    const promises = cardsToMove.map(async (card) => {
+      const randomRot = Math.floor(Math.random() * 4 - 2);
+      await Promise.all([
+        dealer.dealCard(card, "market", { cardIndex: 0, rotation: randomRot }, false),
+        dealer.flipCard(card, false),
+      ]);
+    });
+
+    await Promise.all(promises);
+    await new Promise((r) => setTimeout(r, 200));
+  }, [visualGameState]);
 
   const handleAction = (
     logic: (baseState: GameState) => Promise<{ newState: GameState, animationPromise?: Promise<void> } | GameState>,
@@ -469,8 +498,6 @@ const WhotOnlineUI = () => {
         pendingLocalStateRef.current = nextState;
 
         // 4. Update Redux (Visual Feedback)
-        // Ensure we de-rotate if we are Player 2, because Redux expects "Server/Logical" format
-        // pendingLocalStateRef is always ROTATED (Me=0).
         if (currentGame) {
           const serverFormatState = needsRotation ? rotateGameState(nextState) : nextState;
           dispatch(setCurrentGame({
@@ -485,8 +512,7 @@ const WhotOnlineUI = () => {
           socketService.emitMove(currentGame!.id, { ...socketAction, timestamp: Date.now() });
         }
 
-        // 6. Persist Background - ONLY ON GAME OVER (Optimization)
-        // We rely on Sockets/Memory for intermediate state. DB is only for final results/wallet.
+        // 6. Persist Background - ONLY ON GAME OVER
         if (nextState.winner) {
           const logicalState = needsRotation ? rotateGameState(nextState) : nextState;
           dispatch(updateOnlineGameState({
@@ -500,9 +526,7 @@ const WhotOnlineUI = () => {
           })).unwrap().catch(() => { });
         }
 
-        // 7. Handle Animation (Non-Blocking for State, but Blocking for Queue?)
-        // If we await here, we ensure sequential animations (A lands, then B starts).
-        // This prevents chaos.
+        // 7. Handle Animation
         if (animPromise) {
           await animPromise.catch(e => console.warn("Anim Error", e));
         }
@@ -511,8 +535,6 @@ const WhotOnlineUI = () => {
         console.error('Action logic failed:', err);
       } finally {
         lastAnimationTimeRef.current = Date.now();
-        // We defer clearing 'isAnimating' until queue empty? 
-        // Or simply keep it simple.
         if (actionQueueRef.current.length === 0) {
           setIsAnimating(false);
           isAnimatingRef.current = false;
@@ -524,11 +546,7 @@ const WhotOnlineUI = () => {
     processActionQueue();
   };
 
-
-
   const handleRemoteAction = async (action: WhotGameAction) => {
-    // No need to sleep here anymore, the queue handles serialization!
-
     handleAction(async (currentBaseState) => {
       const dealer = cardListRef.current;
       const oppIndex = 1;
@@ -541,7 +559,6 @@ const WhotOnlineUI = () => {
           let animPromise: Promise<void> | undefined;
 
           if (dealer) {
-            // Animation: Opponent plays card to pile
             const zIndex = currentBaseState.pile.length + 100;
             animPromise = Promise.all([
               dealer.dealCard(card, "pile", { cardIndex: zIndex }, false, action.timestamp),
@@ -555,21 +572,31 @@ const WhotOnlineUI = () => {
           }
 
           if (card.number === 14 && newState.pendingAction?.type === 'draw') {
-            // Special 14 Cascade Visualization
             const { newState: finalState, drawnCard } = executeForcedDraw(newState);
             if (drawnCard && dealer) {
               const subAnim = async () => {
+                const srv = needsRotation ? rotateGameState(finalState) : finalState;
+                dispatch(setCurrentGame({ ...currentGame!, board: srv }));
+                pendingLocalStateRef.current = finalState;
+
                 dealer.teleportCard(drawnCard, "market", { cardIndex: 0 });
-                await new Promise(r => setTimeout(r, 50));
-                // Opponent attacked ME (Player 0)
+                await new Promise(r => setTimeout(r, 40));
+
                 const myHand = finalState.players[0].hand;
-                await dealer.dealCard(drawnCard, "player", {
-                  cardIndex: 0,
-                  handSize: 5
-                }, false);
-                await dealer.flipCard(drawnCard, true);
+                const animPromises = myHand.slice(0, layoutHandSize).map((c, idx) => {
+                  const isLastVisibleSlot = idx === layoutHandSize - 1;
+                  const zIndexOverride = isLastVisibleSlot
+                    ? (myHand.length > layoutHandSize ? 90 : 105)
+                    : 100 + idx;
+                  return dealer.dealCard(c, "player", {
+                    cardIndex: idx,
+                    handSize: layoutHandSize,
+                    zIndex: zIndexOverride
+                  }, false);
+                });
+                animPromises.push(dealer.flipCard(drawnCard, true));
+                await Promise.all(animPromises);
               };
-              // Chain animations if needed
               animPromise = animPromise ? animPromise.then(subAnim) : subAnim();
             }
             newState = finalState;
@@ -584,12 +611,24 @@ const WhotOnlineUI = () => {
           if (drawnCards.length > 0 && dealer) {
             const card = drawnCards[0];
             animPromise = (async () => {
+              // Redux already updated by handleAction context
+              await new Promise(r => setTimeout(r, 40));
               dealer.teleportCard(card, "market", { cardIndex: 0 }, action.timestamp);
               await new Promise(r => setTimeout(r, 40));
-              await dealer.dealCard(card, "computer", {
-                cardIndex: newState.players[1].hand.length - 1,
-                handSize: newState.players[1].hand.length
-              }, false, action.timestamp);
+
+              const oppHand = newState.players[1].hand;
+              const animPromises = oppHand.slice(0, layoutHandSize).map((c, idx) => {
+                const isLastVisibleSlot = idx === layoutHandSize - 1;
+                const zIndexOverride = isLastVisibleSlot
+                  ? (oppHand.length > layoutHandSize ? 90 : 205)
+                  : 200 + idx;
+                return dealer.dealCard(c, "computer", {
+                  cardIndex: idx,
+                  handSize: layoutHandSize,
+                  zIndex: zIndexOverride
+                }, false, action.timestamp);
+              });
+              await Promise.all(animPromises);
             })();
           }
           return { newState, animationPromise: animPromise };
@@ -602,7 +641,6 @@ const WhotOnlineUI = () => {
           let state = currentBaseState;
           let animPromise: Promise<void> | undefined;
 
-          // 🔥 FIX: If remote says FORCED_DRAW but we are in 'defend', convert it to 'draw' first
           if (state.pendingAction?.type === 'defend' && state.pendingAction.playerIndex === oppIndex) {
             state = {
               ...state,
@@ -614,32 +652,48 @@ const WhotOnlineUI = () => {
           if (pending?.type === 'draw' && pending.playerIndex === oppIndex) {
             animPromise = (async () => {
               const total = pending.count;
-              // We need to iterate state to find WHICH cards are drawn for correct animation?
-              // Actually we just rerun the drawing logic locally for visualization.
-              // NOTE: We must capture the ITERATIVE state updates for the animation to know indexes.
-              // But passing `state` into the async closure is risky if `state` is mutated?
-              // `executeForcedDraw` returns a NEW state object. Safe.
-
               let tempState = state;
               for (let i = 0; i < total; i++) {
+                if (tempState.market.length === 0 && tempState.pile.length > 1 && dealer) {
+                  await animateReshuffle();
+                  tempState = getReshuffledState(tempState);
+                  pendingLocalStateRef.current = tempState;
+                }
+
                 const { newState: nextS, drawnCard } = executeForcedDraw(tempState);
                 tempState = nextS;
 
                 if (drawnCard && dealer) {
+                  const srv = needsRotation ? rotateGameState(tempState) : tempState;
+                  dispatch(setCurrentGame({ ...currentGame!, board: srv }));
+                  pendingLocalStateRef.current = tempState;
+
                   dealer.teleportCard(drawnCard, "market", { cardIndex: 0 }, action.timestamp);
                   await new Promise(r => setTimeout(r, 40));
-                  await dealer.dealCard(drawnCard, "computer", {
-                    cardIndex: 0,
-                    handSize: 5
-                  }, false, action.timestamp);
+
+                  const oppHand = tempState.players[1].hand;
+                  const animPromises = oppHand.slice(0, layoutHandSize).map((c, idx) => {
+                    const isLastVisibleSlot = idx === layoutHandSize - 1;
+                    const zIndexOverride = isLastVisibleSlot
+                      ? (oppHand.length > layoutHandSize ? 90 : 205)
+                      : 200 + idx;
+                    return dealer.dealCard(c, "computer", {
+                      cardIndex: idx,
+                      handSize: layoutHandSize,
+                      zIndex: zIndexOverride
+                    }, false, action.timestamp);
+                  });
+                  await Promise.all(animPromises);
+                  await new Promise(r => setTimeout(r, 100));
                 }
               }
             })();
 
-            // To be perfectly accurate, we should return the FINAL state immediately.
-            // Loop synchronously to get final state.
             let tempState = state;
             for (let i = 0; i < pending.count; i++) {
+              if (tempState.market.length === 0 && tempState.pile.length > 1) {
+                tempState = getReshuffledState(tempState);
+              }
               tempState = executeForcedDraw(tempState).newState;
             }
             state = tempState;
@@ -653,24 +707,20 @@ const WhotOnlineUI = () => {
     }, undefined);
   };
 
-  // --- 11. USER INPUT HANDLERS ---
-  // --- 11. USER INPUT HANDLERS ---
   const latestOnCardPress = useRef<(card: Card) => void>(() => { });
 
   useEffect(() => {
     latestOnCardPress.current = (card: Card) => {
       if (!visualGameState) return;
 
-      // Check turn using Visual Index 0 (You)
       if (visualGameState.currentPlayer !== 0) {
-        toast({ title: 'Not your turn', type: "warning" });
+        toast({ title: 'Not your turn', type: "error" });
         return;
       }
       logTap();
 
       handleAction(async (currentBaseState) => {
         const dealer = cardListRef.current;
-        // 🔥 FIX: Always use visual index 0 (Me) because currentBaseState is already rotated.
         let newState = playCard(currentBaseState, 0, card);
         let animPromise: Promise<void> | undefined;
 
@@ -680,30 +730,38 @@ const WhotOnlineUI = () => {
             dealer.dealCard(card, "pile", { cardIndex: safeZIndex }, false),
             dealer.flipCard(card, true)
           ]).then(() => { });
+
+          const myHand = newState.players[0].hand;
+          const visibleHand = myHand.slice(0, playerHandLimit);
+          visibleHand.forEach((hCard, idx) => {
+            dealer.dealCard(hCard, "player", { cardIndex: idx, handSize: layoutHandSize }, false);
+          });
         }
 
         if (card.number === 14) {
           const { newState: stateAfterDraw, drawnCard } = executeForcedDraw(newState);
           if (drawnCard && dealer) {
             const subAnim = async () => {
+              const srv = needsRotation ? rotateGameState(stateAfterDraw) : stateAfterDraw;
+              dispatch(setCurrentGame({ ...currentGame!, board: srv }));
+              pendingLocalStateRef.current = stateAfterDraw;
+
               dealer.teleportCard(drawnCard, "market", { cardIndex: 0 });
-              await new Promise(r => setTimeout(r, 50));
-              // Opponent attacked ME (Player 0) - or cascading 14s...
-              // Wait, if I played 14, and Opponent picks? No, I played 14.
-              // If I played 14, newState logic executes forced draw on Opponent?
-              // Logic: playCard(14) -> sets pendingAction for NEXT player.
-              // executeForcedDraw(newState) checks pendingAction.
-              // If I just played 14, pendingAction is for Opponent (1).
-              // So executeForcedDraw draws for Opponent.
-              // Opponent is Visually Index 1.
-              // BUT previous code used logic to deal to 'computer' (which is Opponent).
-              // "const oppIndex = myLogicalIndex === 0 ? 1 : 0;" -> original logic tried to find logical opponent.
-              // Visual Opponent is ALWAYS 1.
+              await new Promise(r => setTimeout(r, 40));
+
               const oppHand = stateAfterDraw.players[1].hand;
-              await dealer.dealCard(drawnCard, "computer", {
-                cardIndex: 0,
-                handSize: 5
-              }, false);
+              const animPromises = oppHand.slice(0, layoutHandSize).map((c, idx) => {
+                const isLastVisibleSlot = idx === layoutHandSize - 1;
+                const zIndexOverride = isLastVisibleSlot
+                  ? (oppHand.length > layoutHandSize ? 90 : 205)
+                  : 200 + idx;
+                return dealer.dealCard(c, "computer", {
+                  cardIndex: idx,
+                  handSize: layoutHandSize,
+                  zIndex: zIndexOverride
+                }, false);
+              });
+              await Promise.all(animPromises);
             };
             animPromise = animPromise ? animPromise.then(subAnim) : subAnim();
           }
@@ -726,7 +784,6 @@ const WhotOnlineUI = () => {
   const onPickFromMarket = () => {
     if (visualGameState?.currentPlayer !== 0) return;
 
-    // 🔥 FIX: Surrender happens if pending action is 'draw' OR 'defend' for player 0
     const isSurrender = (visualGameState?.pendingAction?.type === 'draw' || visualGameState?.pendingAction?.type === 'defend') && visualGameState?.pendingAction.playerIndex === 0;
 
     const socketAction: WhotGameAction = isSurrender
@@ -737,18 +794,29 @@ const WhotOnlineUI = () => {
       const dealer = cardListRef.current;
       if (!dealer) return baseState;
 
+      let logicalState = baseState;
+      if (logicalState.market.length === 0 && logicalState.pile.length > 1) {
+        await animateReshuffle();
+        logicalState = getReshuffledState(logicalState);
+        pendingLocalStateRef.current = logicalState;
+      }
+
       const handlePickLogic = async (startState: GameState): Promise<{ newState: GameState, animationPromise?: Promise<void> }> => {
         let tempState = startState;
         let animPromise: Promise<void> | undefined;
 
         const pending = tempState.pendingAction;
 
-        // 🔥 FIX: Check against 0 (Visual You)
         if (pending?.type === 'draw' && pending.playerIndex === 0) {
           const totalToPick = pending.count;
           const animSteps: Card[] = [];
 
           for (let i = 0; i < totalToPick; i++) {
+            if (tempState.market.length === 0 && tempState.pile.length > 1) {
+              await animateReshuffle();
+              tempState = getReshuffledState(tempState);
+              pendingLocalStateRef.current = tempState;
+            }
             const { newState: nextS, drawnCard } = executeForcedDraw(tempState);
             tempState = nextS;
             if (drawnCard) animSteps.push(drawnCard);
@@ -756,27 +824,38 @@ const WhotOnlineUI = () => {
 
           if (animSteps.length > 0) {
             animPromise = (async () => {
+              let currentLoopState = startState;
               for (const card of animSteps) {
+                const nextStepS = executeForcedDraw(currentLoopState).newState;
+                const srv = needsRotation ? rotateGameState(nextStepS) : nextStepS;
+                dispatch(setCurrentGame({ ...currentGame!, board: srv }));
+                pendingLocalStateRef.current = nextStepS;
+
                 dealer.teleportCard(card, "market", { cardIndex: 0 });
                 await new Promise(r => setTimeout(r, 40));
 
-                // 🔥 FIX: Visual logic always deals to 'player' (Me)
-                const myHand = tempState.players[0].hand;
-                const finalIndex = myHand.findIndex(c => c.id === card.id);
-
-                await dealer.dealCard(card, "player", {
-                  cardIndex: finalIndex >= 0 ? finalIndex : -1,
-                  handSize: 5
-                }, false);
-                await dealer.flipCard(card, true);
-                await new Promise(r => setTimeout(r, 150));
+                const myHand = nextStepS.players[0].hand;
+                const animPromises = myHand.slice(0, layoutHandSize).map((c, idx) => {
+                  const isLastVisibleSlot = idx === layoutHandSize - 1;
+                  const zIndexOverride = isLastVisibleSlot
+                    ? (myHand.length > layoutHandSize ? 90 : 105)
+                    : 100 + idx;
+                  return dealer.dealCard(c, "player", {
+                    cardIndex: idx,
+                    handSize: layoutHandSize,
+                    zIndex: zIndexOverride
+                  }, false);
+                });
+                animPromises.push(dealer.flipCard(card, true));
+                await Promise.all(animPromises);
+                currentLoopState = nextStepS;
+                await new Promise(r => setTimeout(r, 100));
               }
             })();
           }
           return { newState: tempState, animationPromise: animPromise };
         }
 
-        // 🔥 FIX: Use 0 for pickCard
         const { newState, drawnCards } = pickCard(tempState, 0);
 
         if (drawnCards.length === 0 && newState.pendingAction?.type === 'draw') {
@@ -786,31 +865,36 @@ const WhotOnlineUI = () => {
         if (drawnCards.length > 0) {
           const card = drawnCards[0];
           animPromise = (async () => {
+            await new Promise(r => setTimeout(r, 40));
             dealer.teleportCard(card, "market", { cardIndex: 0 });
             await new Promise(r => setTimeout(r, 40));
 
-            const myHand = newState.players[0].hand; // 🔥 FIX: Visual Index 0
-            const finalIndex = myHand.findIndex(c => c.id === card.id);
-
-            await dealer.dealCard(card, "player", {
-              cardIndex: finalIndex >= 0 ? finalIndex : myHand.length,
-              handSize: myHand.length > 5 ? 5 : myHand.length
-            }, false);
-            await dealer.flipCard(card, true);
+            const myHand = newState.players[0].hand;
+            const animPromises = myHand.slice(0, layoutHandSize).map((c, idx) => {
+              const isLastVisibleSlot = idx === layoutHandSize - 1;
+              const zIndexOverride = isLastVisibleSlot
+                ? (myHand.length > layoutHandSize ? 90 : 105)
+                : 100 + idx;
+              return dealer.dealCard(c, "player", {
+                cardIndex: idx,
+                handSize: layoutHandSize,
+                zIndex: zIndexOverride
+              }, false);
+            });
+            animPromises.push(dealer.flipCard(card, true));
+            await Promise.all(animPromises);
           })();
         }
-
         return { newState, animationPromise: animPromise };
       };
 
-      return await handlePickLogic(baseState);
+      return await handlePickLogic(logicalState);
     }, socketAction);
   };
 
   const onSuitSelect = (suit: CardSuit) => {
     setIsSuitSelectorOpen(false);
     handleAction(async (baseState) => {
-      // Always use visual index 0 for local player
       const newState = callSuit(baseState, 0, suit);
       return newState;
     }, { type: 'CALL_SUIT', suit, timestamp: Date.now() });
@@ -819,38 +903,35 @@ const WhotOnlineUI = () => {
   const handlePagingPress = async () => {
     const dealer = cardListRef.current;
     if (!dealer || isAnimating || isAnimatingRef.current || !visualGameState) return;
-
     const myHand = visualGameState.players[0].hand;
-    if (myHand.length <= 5) return;
-
+    if (myHand.length <= playerHandLimit) return;
     const lastCard = myHand[myHand.length - 1];
     const rotatedHand = [lastCard, ...myHand.slice(0, -1)];
-
-    dealer.teleportCard(lastCard, "player", { cardIndex: -1, handSize: 5 });
-
+    dealer.teleportCard(lastCard, "player", { cardIndex: -1, handSize: layoutHandSize, zIndex: 90 });
     handleAction(async () => {
       const newState = {
         ...visualGameState,
         players: visualGameState.players.map((p, i) => i === 0 ? { ...p, hand: rotatedHand } : p)
       };
-
       const animationPromises: Promise<void>[] = [];
-      rotatedHand.slice(0, 5).forEach((c, idx) => {
-        animationPromises.push(dealer.dealCard(c, "player", { cardIndex: idx, handSize: 5 }, false));
+      rotatedHand.slice(0, layoutHandSize).forEach((c, idx) => {
+        const isLastVisibleSlot = idx === layoutHandSize - 1;
+        const zIndexOverride = isLastVisibleSlot
+          ? (rotatedHand.length > layoutHandSize ? 90 : 105)
+          : 100 + idx;
+        animationPromises.push(dealer.dealCard(c, "player", { cardIndex: idx, handSize: layoutHandSize, zIndex: zIndexOverride }, false));
       });
-      if (rotatedHand.length > 5) {
-        animationPromises.push(dealer.dealCard(rotatedHand[5], "player", { cardIndex: 5, handSize: 5 }, false));
+      if (rotatedHand.length > layoutHandSize) {
+        const cardLeaving = rotatedHand[layoutHandSize];
+        animationPromises.push(dealer.dealCard(cardLeaving, "player", { cardIndex: 5, handSize: layoutHandSize, zIndex: 90 }, false));
       }
       await Promise.all(animationPromises);
       return newState;
     });
   };
 
-  // --- 12. INITIALIZATION ---
   const onCardListReady = () => {
-    setTimeout(() => {
-      if (!hasDealt) animateInitialDeal();
-    }, 500);
+    setTimeout(() => { if (!hasDealt) animateInitialDeal(); }, 500);
   };
 
   const animateInitialDeal = async () => {
@@ -858,27 +939,32 @@ const WhotOnlineUI = () => {
     const dealer = cardListRef.current;
     setIsAnimating(true);
     isAnimatingRef.current = true;
-
     const { players, pile } = visualGameState;
     const h1 = players[0].hand;
     const h2 = players[1].hand;
-
+    const visiblePlayerHand = h1.slice(0, layoutHandSize);
+    const hiddenPlayerHand = h1.slice(layoutHandSize);
     const dealPromises = [];
     for (let i = 0; i < h2.length; i++) {
-      if (h2[i]) dealPromises.push(dealer.dealCard(h2[i], "computer", { cardIndex: i, handSize: h2.length }, false));
+      dealPromises.push(dealer.dealCard(h2[i], "computer", { cardIndex: i, handSize: h2.length }, false));
     }
-    for (let i = 0; i < h1.length; i++) {
-      if (h1[i]) dealPromises.push(dealer.dealCard(h1[i], "player", { cardIndex: i, handSize: h1.length }, false));
+    for (let i = 0; i < visiblePlayerHand.length; i++) {
+      const isLastVisibleSlot = i === layoutHandSize - 1;
+      const zIndexOverride = isLastVisibleSlot
+        ? (h1.length > layoutHandSize ? 90 : 105)
+        : 100 + i;
+      dealPromises.push(dealer.dealCard(visiblePlayerHand[i], "player", { cardIndex: i, handSize: layoutHandSize, zIndex: zIndexOverride }, false));
+    }
+    for (const card of hiddenPlayerHand) {
+      dealer.dealCard(card, "player", { cardIndex: 5, handSize: layoutHandSize, zIndex: 90 }, true);
     }
     if (pile.length > 0) {
       dealPromises.push(dealer.dealCard(pile[pile.length - 1], "pile", { cardIndex: 0 }, false));
       dealPromises.push(dealer.flipCard(pile[pile.length - 1], true));
     }
     await Promise.all(dealPromises);
-
-    const flips = h1.map(c => dealer.flipCard(c, true));
+    const flips = visiblePlayerHand.map(c => dealer.flipCard(c, true));
     await Promise.all(flips);
-
     lastAnimationTimeRef.current = Date.now();
     setIsAnimating(false);
     isAnimatingRef.current = false;
@@ -890,53 +976,19 @@ const WhotOnlineUI = () => {
     navigation.navigate('GameHome' as never);
   };
 
-  // --- RENDER ---
   const areFontsReady = stableFont !== null && stableWhotFont !== null;
-
-  if (errorMessage) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.centerContainer}>
-          <Text style={styles.errorText}>⚠️ Error</Text>
-          <Text style={styles.loadingText}>{errorMessage}</Text>
-          <TouchableOpacity style={styles.cancelButton} onPress={() => navigation.goBack()}>
-            <Text style={styles.cancelText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (isMatchmaking) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.matchmakingContainer}>
-          <ActivityIndicator size="large" color="#FFD700" />
-          <Text style={styles.matchmakingTitle}>{matchmakingMessage}</Text>
-          <TouchableOpacity style={styles.cancelButton} onPress={() => navigation.goBack()}>
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   if (!currentGame || !visualGameState || !areFontsReady || !assetsReady || !areCardsReadyToRender) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color="#FFD700" />
           <Text style={styles.loadingText}>Preparing Arena...</Text>
-          <Text style={[styles.loadingText, { fontSize: 10, opacity: 0.6 }]}>
-            {!currentGame ? 'Waiting for match...' : !areFontsReady ? 'Loading fonts...' : !assetsReady ? 'Cashing assets...' : !areCardsReadyToRender ? 'Initializing layout...' : 'Processing board...'}
-          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
   const opponent = needsRotation ? currentGame.player1 : currentGame.player2;
-
   return (
     <WhotCoreUI
       game={{
@@ -968,7 +1020,7 @@ const WhotOnlineUI = () => {
       onPagingPress={handlePagingPress}
       onSuitSelect={onSuitSelect}
       onCardListReady={onCardListReady}
-      showPagingButton={(visualGameState.players?.[0]?.hand?.length || 0) > 5}
+      showPagingButton={(visualGameState.players?.[0]?.hand?.length || 0) > playerHandLimit}
       allCards={areCardsReadyToRender ? reconstructedAllCards : []}
       playerHandIdsSV={playerHandIdsSV}
       gameInstanceId={currentGame.id || 'whot-online'}
@@ -995,7 +1047,6 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#000' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { color: '#FFD700', marginTop: 15 },
-  errorText: { color: '#ef5350', fontSize: 20, fontWeight: 'bold', marginBottom: 10 },
   matchmakingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   matchmakingTitle: { color: 'white', fontSize: 24, fontWeight: 'bold', marginTop: 20, textAlign: 'center' },
   cancelButton: { marginTop: 40, padding: 15, borderWidth: 1, borderColor: '#d32f2f', borderRadius: 8 },

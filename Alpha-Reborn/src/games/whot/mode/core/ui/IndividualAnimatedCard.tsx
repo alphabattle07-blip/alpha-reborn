@@ -183,11 +183,18 @@ const IndividualAnimatedCard = memo(
 
           if (instant) {
             // Settle immediately
-            const { cardIndex } = options || {};
-            if (target === "player") zIndex.value = 100 + (cardIndex || 0);
-            else if (target === "computer") zIndex.value = 200 + (cardIndex || 0);
-            else if (target === "pile") zIndex.value = 50 + (cardIndex || 0);
-            else zIndex.value = 1;
+            const { cardIndex, zIndex: zIndexOverride } = options || {};
+            if (zIndexOverride !== undefined) {
+              zIndex.value = zIndexOverride;
+            } else if (target === "player") {
+              zIndex.value = 100 + (cardIndex || 0);
+            } else if (target === "computer") {
+              zIndex.value = 200 + (cardIndex || 0);
+            } else if (target === "pile") {
+              zIndex.value = 50 + (cardIndex || 0);
+            } else {
+              zIndex.value = 1;
+            }
 
             x.value = newX;
             y.value = newY;
@@ -209,10 +216,16 @@ const IndividualAnimatedCard = memo(
             y.value = withTiming(newY, { duration: adjustedDuration });
             rotation.value = withTiming(newRot, { duration: adjustedDuration }, (finished) => {
               if (finished) {
-                const { cardIndex } = options || {};
-                if (target === "player") zIndex.value = 100 + (cardIndex || 0);
-                else if (target === "computer") zIndex.value = 200 + (cardIndex || 0);
-                else if (target === "pile") zIndex.value = 50 + (cardIndex || 0);
+                const { cardIndex, zIndex: zIndexOverride } = options || {};
+                if (zIndexOverride !== undefined) {
+                  zIndex.value = zIndexOverride;
+                } else if (target === "player") {
+                  zIndex.value = 100 + (cardIndex || 0);
+                } else if (target === "computer") {
+                  zIndex.value = 200 + (cardIndex || 0);
+                } else if (target === "pile") {
+                  zIndex.value = 50 + (cardIndex || 0);
+                }
               }
             });
           }
