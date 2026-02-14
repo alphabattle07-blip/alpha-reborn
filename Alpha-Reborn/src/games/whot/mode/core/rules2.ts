@@ -50,7 +50,7 @@ export const applyCardEffectRule2 = (
   state: GameState,
   playerIndex: number
 ): GameState => {
-  const newState: GameState = { ...state };
+  const newState: GameState = { ...state, calledSuit: undefined };
 
   const getNextPlayerIndex = (currentIdx: number, steps: number = 1) => {
     return (

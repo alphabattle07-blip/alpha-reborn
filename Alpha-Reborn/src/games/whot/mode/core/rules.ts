@@ -84,6 +84,7 @@ export const applyCardEffectRule1 = (
         ? { ...p, hand: p.hand.filter((c) => c.id !== card.id) }
         : p
     ),
+    calledSuit: undefined, // ✅ Ensure called suit is cleared whenever ANY card is played
   };
 
   const getNextPlayerIndex = (steps = 1) => {
@@ -178,7 +179,6 @@ export const applyCardEffectRule1 = (
 
     // --- Group 3: WHOT ---
     case 20:
-      newState.calledSuit = undefined;
       newState.currentPlayer = playerIndex;
       newState.pendingAction = {
         type: "call_suit",
@@ -192,7 +192,6 @@ export const applyCardEffectRule1 = (
       newState.currentPlayer = getNextPlayerIndex(1);
       newState.pendingAction = null;
       newState.lastPlayedCard = null;
-      newState.calledSuit = undefined; // ✅ FIX: Clear called suit after valid play
       break;
   }
 
