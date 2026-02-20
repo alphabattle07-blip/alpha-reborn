@@ -372,10 +372,12 @@ const WhotOnlineUI = () => {
 
       visibleHand.forEach((c, i) => {
         dealer.teleportCard(c, "player", { cardIndex: i, handSize: layoutHandSize });
+        dealer.flipCard(c, true); // Ensure my cards are face-up!
       });
       hiddenHand.forEach((c) => {
         // Stack behind the last visible card (index 5) with a lower zIndex
         dealer.teleportCard(c, "player", { cardIndex: 5, handSize: layoutHandSize, zIndex: 90 });
+        dealer.flipCard(c, true); // Ensure hidden stacked cards are face-up too (in case they are paged)
       });
     });
 
