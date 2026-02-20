@@ -47,11 +47,8 @@ class SocketService {
 
         // ✅ HANDLE FULL STATE SYNC as a potential "move" (for robustness)
         this.socket.on('gameStateUpdate', (payload: any) => {
-            // We can treat this as an opponent-move event so WhotOnline picks it up
-            // WhotOnline checks if payload has 'type' (Action) or is just state (Sync)
-            // So simply forwarding it works.
             // console.log('[SocketService] Received Game State Update');
-            this.emitLocal('opponent-move', payload?.board || payload);
+            this.emitLocal('gameStateUpdate', payload?.board || payload);
         });
     }
 
@@ -127,6 +124,10 @@ class SocketService {
 
     onOpponentMove(callback: (move: any) => void) {
         return this.on('opponent-move', callback);
+    }
+
+    onGameStateUpdate(callback: (board: any) => void) {
+        return this.on('gameStateUpdate', callback);
     }
 
     private on(event: string, callback: Function) {
