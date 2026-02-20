@@ -80,8 +80,9 @@ const WhotOnlineUI = () => {
   // --- ROLES ---
   const isPlayer1 = currentGame?.player1?.id === userProfile?.id;
   const isPlayer2 = currentGame?.player2?.id === userProfile?.id;
-  const needsRotation = isPlayer2;
-  const myLogicalIndex = needsRotation ? 1 : 0;
+  // Server's scrubStateForClient already puts "me" at players[0], so NO client rotation needed
+  const needsRotation = false;
+  const myLogicalIndex = 0;
 
   const playerHandLimit = 5;
   const layoutHandSize = 6;
@@ -470,16 +471,24 @@ const WhotOnlineUI = () => {
   };
 
   const handleRemoteAction = async (action: WhotGameAction) => {
+    // 🎯 ANIMATION-ONLY: The server is authoritative.
+    // Local game logic (playCard, pickCard etc.) must NOT run for opponent moves
+    // because their cards are fogged (suit: 'hidden'). The gameStateUpdate broadcast
+    // already updates Redux with the correct state.
     handleAction(async (currentBaseState) => {
       const dealer = cardListRef.current;
-      const oppIndex = 1;
 
       switch (action.type) {
         case 'CARD_PLAYED': {
-          const card = visualGameState?.allCards?.find(c => c.id === action.cardId);
+          // Prefer the full card from the server event (public info once played)
+          // Fallback to allCards lookup (may be fogged for opponent cards)
+          const card = (action as any).card
+            || visualGameState?.allCards?.find(c => c.id === action.cardId);
           if (!card) return currentBaseState;
 
           let animPromise: Promise<void> | undefined;
+
+          console.log(`🎴 [Remote CARD_PLAYED] card: ${card.id} suit:${card.suit} num:${card.number} dealer:${!!dealer}`);
 
           if (dealer) {
             const zIndex = currentBaseState.pile.length + 100;
@@ -489,115 +498,39 @@ const WhotOnlineUI = () => {
             ]).then(() => { });
           }
 
-          let newState = playCard(currentBaseState, oppIndex, card);
-          if (action.suitChoice && newState.pendingAction?.type === 'call_suit') {
-            newState = callSuit(newState, oppIndex, action.suitChoice);
-          }
-
-          if (card.number === 14 && newState.pendingAction?.type === 'draw') {
-            const { newState: finalState, drawnCard } = executeForcedDraw(newState);
-            if (drawnCard && dealer) {
-              const subAnim = async () => {
-                dealer.teleportCard(drawnCard, "market", { cardIndex: 0 });
-                await new Promise(r => setTimeout(r, 40));
-
-                const myHand = finalState.players[0].hand;
-                const animPromises = myHand.slice(0, layoutHandSize).map((c, idx) => {
-                  return dealer.dealCard(c, "player", {
-                    cardIndex: idx,
-                    handSize: layoutHandSize,
-                  }, false);
-                });
-                animPromises.push(dealer.flipCard(drawnCard, true));
-                await Promise.all(animPromises);
-              };
-              animPromise = animPromise ? animPromise.then(subAnim) : subAnim();
-            }
-            newState = finalState;
-          }
-          return { newState, animationPromise: animPromise };
+          // Do NOT call playCard() — server state handles everything
+          return { newState: currentBaseState, animationPromise: animPromise };
         }
 
         case 'PICK_CARD': {
-          const { newState, drawnCards } = pickCard(currentBaseState, oppIndex);
+          // Opponent drew a card — just animate from market to opponent hand
           let animPromise: Promise<void> | undefined;
 
-          if (drawnCards.length > 0 && dealer) {
-            const card = drawnCards[0];
+          if (dealer) {
+            const oppHand = currentBaseState.players[1]?.hand || [];
+            // We don't know the exact drawn card, but the reconciliation loop
+            // will snap everything into place when the gameStateUpdate arrives.
             animPromise = (async () => {
-              // Redux already updated by handleAction context
-              await new Promise(r => setTimeout(r, 40));
-              dealer.teleportCard(card, "market", { cardIndex: 0 }, action.timestamp);
-              await new Promise(r => setTimeout(r, 40));
-
-              const oppHand = newState.players[1].hand;
-              const animPromises = oppHand.slice(0, layoutHandSize).map((c, idx) => {
-                return dealer.dealCard(c, "computer", {
-                  cardIndex: idx,
-                  handSize: layoutHandSize,
-                }, false, action.timestamp);
-              });
-              await Promise.all(animPromises);
+              await new Promise(r => setTimeout(r, 100));
             })();
           }
-          return { newState, animationPromise: animPromise };
+
+          return { newState: currentBaseState, animationPromise: animPromise };
         }
 
         case 'CALL_SUIT':
-          return callSuit(currentBaseState, oppIndex, action.suit);
+          // Visual only — the server state will update calledSuit via gameStateUpdate
+          return currentBaseState;
 
         case 'FORCED_DRAW': {
-          let state = currentBaseState;
+          // Opponent is drawing penalty cards — let reconciliation handle it
           let animPromise: Promise<void> | undefined;
-
-          if (state.pendingAction?.type === 'defend' && state.pendingAction.playerIndex === oppIndex) {
-            state = {
-              ...state,
-              pendingAction: { ...state.pendingAction, type: 'draw' } as any
-            };
-          }
-
-          const pending = state.pendingAction;
-          if (pending?.type === 'draw' && pending.playerIndex === oppIndex) {
+          if (dealer) {
             animPromise = (async () => {
-              const total = pending.count;
-              let tempState = state;
-              for (let i = 0; i < total; i++) {
-                if (tempState.market.length === 0 && tempState.pile.length > 1 && dealer) {
-                  await animateReshuffle();
-                  tempState = getReshuffledState(tempState);
-                }
-
-                const { newState: nextS, drawnCard } = executeForcedDraw(tempState);
-                tempState = nextS;
-
-                if (drawnCard && dealer) {
-                  dealer.teleportCard(drawnCard, "market", { cardIndex: 0 }, action.timestamp);
-                  await new Promise(r => setTimeout(r, 40));
-
-                  const oppHand = tempState.players[1].hand;
-                  const animPromises = oppHand.slice(0, layoutHandSize).map((c, idx) => {
-                    return dealer.dealCard(c, "computer", {
-                      cardIndex: idx,
-                      handSize: layoutHandSize,
-                    }, false, action.timestamp);
-                  });
-                  await Promise.all(animPromises);
-                  await new Promise(r => setTimeout(r, 100));
-                }
-              }
+              await new Promise(r => setTimeout(r, 100));
             })();
-
-            let tempState = state;
-            for (let i = 0; i < pending.count; i++) {
-              if (tempState.market.length === 0 && tempState.pile.length > 1) {
-                tempState = getReshuffledState(tempState);
-              }
-              tempState = executeForcedDraw(tempState).newState;
-            }
-            state = tempState;
           }
-          return { newState: state, animationPromise: animPromise };
+          return { newState: currentBaseState, animationPromise: animPromise };
         }
 
         default:
@@ -855,7 +788,7 @@ const WhotOnlineUI = () => {
     );
   }
 
-  const opponent = needsRotation ? currentGame.player1 : currentGame.player2;
+  const opponent = isPlayer2 ? currentGame.player1 : currentGame.player2;
   return (
     <WhotCoreUI
       game={{
