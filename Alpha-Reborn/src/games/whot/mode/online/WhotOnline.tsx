@@ -206,57 +206,61 @@ const WhotOnlineUI = () => {
       socketService.joinGame(currentGame.id);
 
       const unsubscribe = socketService.onOpponentMove((payload: any) => {
+        console.log("📡 [WhotOnline] Received onOpponentMove event:", payload?.type || (payload?.board ? 'STATE_SYNC(board)' : 'STATE_SYNC(raw)'));
+
         if (payload && typeof payload === 'object' && 'type' in payload) {
+          console.log("🎮 [WhotOnline] Handling explicit move action:", payload.type);
           handleRemoteAction(payload as WhotGameAction);
         } else if (payload) {
           // ✅ GUARD: Ignore "Full State Syncs" if we are locally ahead (Shield Active)
           if (Date.now() - lastLocalActionTimeRef.current < 3000) {
+            console.log("🛡️ [WhotOnline] Shield active, ignoring state sync");
             return;
           }
 
           if (!isAnimatingRef.current) {
             // --- INFER ACTION FROM STATE DIFF (Frontend-Only Fix) ---
             const localVisual = pendingLocalStateRef.current;
-            // The payload is the Server State (raw). Convert to Visual State to compare.
-            const serverVisual = needsRotation ? rotateGameState(payload) : payload;
+            // The payload might be { board: ... } or the board itself
+            const serverBoard = payload.board || payload;
+            const serverVisual = needsRotation ? rotateGameState(serverBoard) : serverBoard;
 
             let inferredAction: WhotGameAction | null = null;
 
-            if (localVisual && serverVisual) {
+            if (localVisual && serverBoard && serverBoard.pile) {
               const oldPile = localVisual.pile || [];
               const newPile = serverVisual.pile || [];
               const oldOppHand = localVisual.players[1].hand || [];
               const newOppHand = serverVisual.players[1].hand || [];
 
-              // 1. Detect CARD_PLAYED (Pile grew, Top card changed)
+              // 1. Detect CARD_PLAYED (Pile grew)
               if (newPile.length > oldPile.length) {
                 const topCard = newPile[newPile.length - 1];
                 const prevTop = oldPile.length > 0 ? oldPile[oldPile.length - 1] : null;
 
                 if (topCard.id !== prevTop?.id) {
-                  console.log("🕵️ INFERRED ACTION: CARD_PLAYED", topCard.id);
+                  console.log("🕵️ [WhotOnline] INFERRED ACTION: CARD_PLAYED", topCard.id);
                   inferredAction = { type: 'CARD_PLAYED', cardId: topCard.id, timestamp: Date.now() };
                 }
               }
               // 2. Detect PICK_CARD (Opponent hand grew)
-              // Note: 'market' might differ, but hand size is the visual cue
               else if (newOppHand.length > oldOppHand.length) {
-                console.log("🕵️ INFERRED ACTION: PICK_CARD");
+                console.log("🕵️ [WhotOnline] INFERRED ACTION: PICK_CARD");
                 inferredAction = { type: 'PICK_CARD', timestamp: Date.now() };
               }
+            } else if (!localVisual) {
+              console.log("⚠️ [WhotOnline] localVisual is null, cannot infer action");
             }
 
             if (inferredAction) {
-              // Execute the animation (this will also update local state)
               handleRemoteAction(inferredAction);
-              // We rely on handleRemoteAction to eventually set pendingLocalStateRef
-              // which will then match serverVisual (mostly).
             } else {
-              // Fallback: Just sync state if no obvious action (or just a heavy refresh)
-              const visualState = serverVisual;
-              pendingLocalStateRef.current = visualState;
-              dispatch(setCurrentGame({ ...currentGame, board: payload }));
+              console.log("🔄 [WhotOnline] No action inferred, syncing state directly");
+              pendingLocalStateRef.current = serverVisual;
+              dispatch(setCurrentGame({ ...currentGame, board: serverBoard }));
             }
+          } else {
+            console.log("⏳ [WhotOnline] Animation in progress, skipping state update");
           }
         }
       });
