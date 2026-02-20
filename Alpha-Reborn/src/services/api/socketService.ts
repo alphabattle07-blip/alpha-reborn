@@ -26,8 +26,8 @@ class SocketService {
         this.socket.on('connect', () => {
             console.log('[SocketService] Connected:', this.socket?.id);
             if (this.gameId) {
-                console.log('[SocketService] Rejoining game:', this.gameId);
-                this.socket?.emit('join-game', this.gameId);
+                console.log('[SocketService] Rejoining game on connect:', this.gameId);
+                this.joinGame(this.gameId); // Use method to ensure proper flow
             }
         });
 
@@ -44,17 +44,26 @@ class SocketService {
             // console.log('[SocketService] Received opponent move:', move);
             this.emitLocal('opponent-move', move);
         });
+
+        // ✅ HANDLE FULL STATE SYNC as a potential "move" (for robustness)
+        this.socket.on('gameStateUpdate', (payload: any) => {
+            // We can treat this as an opponent-move event so WhotOnline picks it up
+            // WhotOnline checks if payload has 'type' (Action) or is just state (Sync)
+            // So simply forwarding it works.
+            // console.log('[SocketService] Received Game State Update');
+            this.emitLocal('opponent-move', payload?.board || payload);
+        });
     }
 
     joinGame(gameId: string) {
-        if (!this.socket) this.connect();
-
         this.gameId = gameId;
-        if (this.socket?.connected) {
+        if (!this.socket) {
+            this.connect();
+        } else if (this.socket.connected) {
             console.log('[SocketService] Joining game room:', gameId);
-            this.socket?.emit('join-game', gameId);
+            this.socket.emit('joinGame', gameId);
         } else {
-            // Will join automatically on connect event
+            // Already connecting/disconnected, will be handled by 'connect' listener
             console.log('[SocketService] Socket not ready, will join on connect:', gameId);
         }
     }
@@ -62,9 +71,25 @@ class SocketService {
     leaveGame(gameId: string) {
         if (this.socket?.connected) {
             console.log('[SocketService] Leaving game room:', gameId);
-            this.socket.emit('leave-game', gameId);
+            this.socket.emit('leaveGame', gameId);
         }
         this.gameId = null;
+    }
+
+    register(userId: string) {
+        if (!this.socket) this.connect();
+
+        if (this.socket?.connected) {
+            console.log('[SocketService] Registering user immediately:', userId);
+            this.socket.emit('register', userId);
+        } else {
+            console.log('[SocketService] Socket not connected, queuing registration for:', userId);
+            // Use a one-time listener for the NEXT connect event
+            this.socket?.once('connect', () => {
+                console.log('[SocketService] Connected, executing queued registration for:', userId);
+                this.socket?.emit('register', userId);
+            });
+        }
     }
 
     emitMove(gameId: string, move: any) {

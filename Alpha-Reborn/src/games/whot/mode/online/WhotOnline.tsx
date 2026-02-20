@@ -192,7 +192,9 @@ const WhotOnlineUI = () => {
 
   // --- 6. SOCKET HANDLERS ---
   useEffect(() => {
-    if (currentGame?.id) {
+    if (currentGame?.id && userProfile?.id) {
+      // ✅ REGISTER FIRST so backend knows who we are (for targeted broadcasts)
+      socketService.register(userProfile.id);
       socketService.joinGame(currentGame.id);
 
       const unsubscribe = socketService.onOpponentMove((payload: any) => {
