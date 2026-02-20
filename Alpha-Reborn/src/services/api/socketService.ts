@@ -48,7 +48,9 @@ class SocketService {
         // ✅ HANDLE FULL STATE SYNC as a potential "move" (for robustness)
         this.socket.on('gameStateUpdate', (payload: any) => {
             // console.log('[SocketService] Received Game State Update');
-            this.emitLocal('gameStateUpdate', payload?.board || payload);
+            const board = payload?.board || payload;
+            const serverTime = payload?.serverTime;
+            this.emitLocal('gameStateUpdate', board, serverTime);
         });
     }
 
@@ -126,7 +128,7 @@ class SocketService {
         return this.on('opponent-move', callback);
     }
 
-    onGameStateUpdate(callback: (board: any) => void) {
+    onGameStateUpdate(callback: (board: any, serverTime?: number) => void) {
         return this.on('gameStateUpdate', callback);
     }
 
@@ -145,10 +147,10 @@ class SocketService {
         };
     }
 
-    private emitLocal(event: string, data: any) {
+    private emitLocal(event: string, ...args: any[]) {
         const callbacks = this.listeners.get(event);
         if (callbacks) {
-            callbacks.forEach(cb => cb(data));
+            callbacks.forEach(cb => cb(...args));
         }
     }
 }
