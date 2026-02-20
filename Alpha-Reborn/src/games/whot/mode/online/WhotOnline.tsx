@@ -205,18 +205,50 @@ const WhotOnlineUI = () => {
           if (Date.now() - lastLocalActionTimeRef.current < 3000) {
             return;
           }
+
           if (!isAnimatingRef.current) {
-            // MERGE SYNC: If we accept a full sync, we must update our Local Truth
-            // Payload is Server State (needs rotation if P2)
-            const newState = payload as GameState;
-            // We need to rotate if we are P2
-            const visualState = needsRotation ? rotateGameState(newState) : newState;
+            // --- INFER ACTION FROM STATE DIFF (Frontend-Only Fix) ---
+            const localVisual = pendingLocalStateRef.current;
+            // The payload is the Server State (raw). Convert to Visual State to compare.
+            const serverVisual = needsRotation ? rotateGameState(payload) : payload;
 
-            // Commit to Local Truth
-            pendingLocalStateRef.current = visualState;
+            let inferredAction: WhotGameAction | null = null;
 
-            // Update Redux
-            dispatch(setCurrentGame({ ...currentGame, board: payload }));
+            if (localVisual && serverVisual) {
+              const oldPile = localVisual.pile || [];
+              const newPile = serverVisual.pile || [];
+              const oldOppHand = localVisual.players[1].hand || [];
+              const newOppHand = serverVisual.players[1].hand || [];
+
+              // 1. Detect CARD_PLAYED (Pile grew, Top card changed)
+              if (newPile.length > oldPile.length) {
+                const topCard = newPile[newPile.length - 1];
+                const prevTop = oldPile.length > 0 ? oldPile[oldPile.length - 1] : null;
+
+                if (topCard.id !== prevTop?.id) {
+                  console.log("🕵️ INFERRED ACTION: CARD_PLAYED", topCard.id);
+                  inferredAction = { type: 'CARD_PLAYED', cardId: topCard.id, timestamp: Date.now() };
+                }
+              }
+              // 2. Detect PICK_CARD (Opponent hand grew)
+              // Note: 'market' might differ, but hand size is the visual cue
+              else if (newOppHand.length > oldOppHand.length) {
+                console.log("🕵️ INFERRED ACTION: PICK_CARD");
+                inferredAction = { type: 'PICK_CARD', timestamp: Date.now() };
+              }
+            }
+
+            if (inferredAction) {
+              // Execute the animation (this will also update local state)
+              handleRemoteAction(inferredAction);
+              // We rely on handleRemoteAction to eventually set pendingLocalStateRef
+              // which will then match serverVisual (mostly).
+            } else {
+              // Fallback: Just sync state if no obvious action (or just a heavy refresh)
+              const visualState = serverVisual;
+              pendingLocalStateRef.current = visualState;
+              dispatch(setCurrentGame({ ...currentGame, board: payload }));
+            }
           }
         }
       });

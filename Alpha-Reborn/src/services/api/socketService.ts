@@ -7,7 +7,7 @@ class SocketService {
     private listeners: Map<string, Function[]> = new Map();
 
     connect() {
-        if (this.socket?.connected) return;
+        if (this.socket) return;
 
         console.log('[SocketService] Connecting to:', API_BASE_URL);
         this.socket = io(API_BASE_URL, {
