@@ -134,6 +134,14 @@ const WhotOnlineUI = () => {
     }
   }, [areLoaded, stableFont, loadedFont, loadedWhotFont]);
 
+  // Seed pendingLocalStateRef with the initial visualGameState for action inference
+  useEffect(() => {
+    if (visualGameState && !pendingLocalStateRef.current && !isAnimatingRef.current) {
+      console.log("🌱 [WhotOnline] Seeding initial state reference");
+      pendingLocalStateRef.current = visualGameState;
+    }
+  }, [visualGameState]);
+
   // --- 2. LAZY LOAD CARDS ---
   useEffect(() => {
     const timer = setTimeout(() => {
