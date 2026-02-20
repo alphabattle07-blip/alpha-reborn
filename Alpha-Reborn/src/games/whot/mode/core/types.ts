@@ -89,6 +89,14 @@ export interface GameState {
   // Tracks if the market has been exhausted (waiting for score calculation)
   marketExhausted?: boolean;
   allCards?: Card[]; // Added for online synchronization
+
+  // --- Dual-Tier Timer Profile ---
+  turnStartTime?: number;
+  turnDuration?: number;
+  warningYellowAt?: number;
+  warningRedAt?: number;
+  timeoutCount?: Record<string, number>;
+  rankType?: "casual" | "warrior";
 }
 
 /**
