@@ -113,8 +113,10 @@ const WhotOnlineUI = () => {
   const stableBoardRef = useRef<GameState | null>(null);
   const stableAllCardsRef = useRef<Card[]>([]);
 
-  const [areCardsReadyToRender, setCardsReadyToRender] = useState(false);
   const [isSuitSelectorOpen, setIsSuitSelectorOpen] = useState(false);
+
+  // --- TIMER SYNC ---
+  const [serverTimeOffset, setServerTimeOffset] = useState<number>(0);
 
   const onFeedback = useCallback((message: string) => {
     Vibration.vibrate(50);
@@ -132,12 +134,9 @@ const WhotOnlineUI = () => {
 
 
   // --- 2. LAZY LOAD CARDS ---
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setCardsReadyToRender(true);
-    }, 800);
-    return () => clearTimeout(timer);
-  }, []);
+  // The 800ms delay was causing a severe race condition against the server's
+  // initial gameStateUpdate, leading to missing card refs during the initial deal.
+  const [areCardsReadyToRender, setCardsReadyToRender] = useState(true);
 
   // --- 3. INIT MATCHMAKING ---
   useEffect(() => {
@@ -195,10 +194,13 @@ const WhotOnlineUI = () => {
         }
       });
 
-      const unsubStateUpdate = socketService.onGameStateUpdate((board: any) => {
+      const unsubStateUpdate = socketService.onGameStateUpdate((board: any, serverTime?: number) => {
         console.log("📡 [WhotOnline] Received gameStateUpdate");
         if (board) {
           dispatch(setCurrentGame({ ...currentGame, board }));
+        }
+        if (serverTime) {
+          setServerTimeOffset(Date.now() - serverTime);
         }
       });
 
@@ -317,10 +319,13 @@ const WhotOnlineUI = () => {
       }
       const seenIds = new Set();
       stableAllCardsRef.current = allCards.filter(card => {
+        // 🔥 CRITICAL FIX: Ensure placeholder cards from the server are preserved!
+        // The server sends `hidden-${opponentId}-${i}` and `hidden-market-${i}`. 
         if (!card?.id || seenIds.has(card.id)) return false;
         seenIds.add(card.id);
         return true;
       });
+      console.log('🃏 [WhotOnline] Initialized stableAllCardsRef with', stableAllCardsRef.current.length, 'cards.', 'Market:', safeState.market.length, 'Pile:', safeState.pile.length);
     }
 
     const startCards = stableAllCardsRef.current;
@@ -874,6 +879,14 @@ const WhotOnlineUI = () => {
       marketCardCount={visualGameState.market?.length || 0}
       activeCalledSuit={visualGameState.calledSuit || null}
       showSuitSelector={isSuitSelectorOpen || (visualGameState.pendingAction?.type === 'call_suit' && visualGameState.currentPlayer === 0)}
+
+      // Dual-Tier Timer Props
+      turnStartTime={visualGameState.turnStartTime}
+      turnDuration={visualGameState.turnDuration}
+      warningYellowAt={visualGameState.warningYellowAt}
+      warningRedAt={visualGameState.warningRedAt}
+      serverTimeOffset={serverTimeOffset}
+
       isAnimating={isAnimating}
       cardListRef={cardListRef}
       onCardPress={onCardPress}
@@ -895,7 +908,7 @@ const WhotOnlineUI = () => {
         winner: visualGameState.winner,
         onRematch: () => { },
         onNewBattle: handleExit,
-        level: 1,
+        level: 1 as any,
         playerName: userProfile?.name || 'You',
         opponentName: opponent?.name || 'Opponent',
         playerRating: userProfile?.rating || 1200,

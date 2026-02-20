@@ -2,7 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { View, StyleSheet, Text, ActivityIndicator, Pressable, TouchableOpacity } from 'react-native';
 import { useFrameCallback, useSharedValue } from 'react-native-reanimated';
 import { SkFont } from '@shopify/react-native-skia';
-import { Card, CardSuit, GameState } from '../types';
+import { Card, CardSuit, GameState, ComputerLevel } from '../types';
 import AnimatedCardList, { AnimatedCardListHandle } from './AnimatedCardList';
 import MemoizedBackground from './MemoizedBackground';
 import WhotSuitSelector from './WhotSuitSelector';
@@ -36,10 +36,18 @@ export type WhotCoreUIProps = {
         isCurrentPlayer: boolean;
         isAI?: boolean;
     };
-    level?: any;
+    level?: ComputerLevel;
     marketCardCount: number;
     activeCalledSuit: CardSuit | null;
     showSuitSelector: boolean;
+
+    // Dual-Tier Timer Props
+    turnStartTime?: number;
+    turnDuration?: number;
+    warningYellowAt?: number;
+    warningRedAt?: number;
+    serverTimeOffset?: number;
+
     isAnimating: boolean;
     cardListRef: React.RefObject<AnimatedCardListHandle>;
     onCardPress: (card: Card) => void;
@@ -77,6 +85,13 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
     marketCardCount,
     activeCalledSuit,
     showSuitSelector,
+
+    turnStartTime,
+    turnDuration,
+    warningYellowAt,
+    warningRedAt,
+    serverTimeOffset = 0,
+
     isAnimating,
     cardListRef,
     onCardPress,
@@ -198,6 +213,12 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                             isAI={false}
                             showCardCount={true}
                             style={{ marginRight: 0, top: 0, alignSelf: 'center' }}
+
+                            turnStartTime={turnStartTime}
+                            turnDuration={turnDuration}
+                            warningYellowAt={warningYellowAt}
+                            warningRedAt={warningRedAt}
+                            serverTimeOffset={serverTimeOffset}
                         />
                     )}
                 </View>
@@ -212,6 +233,12 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                         avatar={playerState.avatar}
                         cardCount={playerState.handLength}
                         isCurrentPlayer={playerState.isCurrentPlayer}
+
+                        turnStartTime={turnStartTime}
+                        turnDuration={turnDuration}
+                        warningYellowAt={warningYellowAt}
+                        warningRedAt={warningRedAt}
+                        serverTimeOffset={serverTimeOffset}
                     />
                 </View>
             )}
@@ -316,7 +343,7 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                     winner={gameOver.winner}
                     onRematch={gameOver.onRematch}
                     onNewBattle={gameOver.onNewBattle}
-                    level={gameOver.level}
+                    level={gameOver.level as any}
                     playerName={gameOver.playerName}
                     opponentName={gameOver.opponentName}
                     playerRating={gameOver.playerRating}

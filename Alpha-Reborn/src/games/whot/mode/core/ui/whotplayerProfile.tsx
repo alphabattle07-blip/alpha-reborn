@@ -3,6 +3,8 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useState, useEffect } from 'react';
 import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
+import { WhotTimerRing } from './WhotTimerRing';
+
 interface Props {
   name: string;
   rating: number;
@@ -13,6 +15,12 @@ interface Props {
   isCurrentPlayer?: boolean;
   showCardCount?: boolean;
   style?: any; // Allow style override
+  // Timer props
+  turnStartTime?: number;
+  turnDuration?: number;
+  warningYellowAt?: number;
+  warningRedAt?: number;
+  serverTimeOffset?: number;
 }
 
 const WhotPlayerProfile = ({
@@ -25,6 +33,11 @@ const WhotPlayerProfile = ({
   isCurrentPlayer = false,
   showCardCount = true,
   style,
+  turnStartTime,
+  turnDuration,
+  warningYellowAt,
+  warningRedAt,
+  serverTimeOffset = 0,
 }: Props) => {
   const { width, height } = useWindowDimensions();
   const [isLandscape, setIsLandscape] = useState(false);
@@ -59,8 +72,21 @@ const WhotPlayerProfile = ({
         )}
       </View>
 
-      {/* 2. Avatar + Card Count Badge */}
+      {/* 2. Avatar + Card Count Badge + Timer Ring */}
       <View style={styles.profileWrapper}>
+
+        {/* The Timer Ring (Under the Avatar) */}
+        <WhotTimerRing
+          isActive={isCurrentPlayer}
+          turnStartTime={turnStartTime}
+          turnDuration={turnDuration}
+          warningYellowAt={warningYellowAt}
+          warningRedAt={warningRedAt}
+          serverTimeOffset={serverTimeOffset}
+          size={isLandscape ? 58 : 72}
+          strokeWidth={isLandscape ? 3 : 4}
+        />
+
         <View style={[
           styles.avatarContainer,
           isLandscape && styles.avatarContainerLandscape,
