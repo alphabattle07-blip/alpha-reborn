@@ -222,7 +222,8 @@ export const pickCard = (
     }
 
     // Case C: Normal Draw
-    const drawnCards = market.splice(0, 1);
+    const drawnCard = market.pop(); // Use pop() to draw from the END
+    const drawnCards = drawnCard ? [drawnCard] : [];
     const newHand = [...drawnCards, ...state.players[playerIndex].hand];
 
     const nextPlayer = (playerIndex + state.direction + state.players.length) % state.players.length;
@@ -280,9 +281,13 @@ export const pickCard = (
       pendingAction.playerIndex === playerIndex)
   ) {
     const market = [...state.market];
+    let drawnCards: Card[] = [];
 
-    // ✅ If market is empty, return early. The UI will handle the reshuffle.
-    if (market.length === 0) {
+    if (market.length > 0) {
+      const drawnCard = market.pop(); // Use pop() to draw from the END
+      drawnCards.push(drawnCard!);
+    } else {
+      // Market is empty, no card drawn, but turn still passes
       const newState = {
         ...state,
         currentPlayer:
@@ -295,7 +300,6 @@ export const pickCard = (
       return { newState, drawnCards: [] };
     }
 
-    const drawnCards = market.splice(0, 1);
     const newHand = [...drawnCards, ...state.players[playerIndex].hand];
 
     // --- OPTIMIZATION START ---

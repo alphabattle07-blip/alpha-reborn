@@ -103,7 +103,9 @@ export interface GameState {
  * Represents a high-level game action for event-based socket messaging.
  */
 export type WhotGameAction =
-  | { type: 'CARD_PLAYED'; cardId: string; suitChoice?: CardSuit; timestamp: number }
+  | { type: 'PLAY_CARD'; cardId: string; calledSuit?: CardSuit; timestamp: number }
+  | { type: 'DRAW'; timestamp: number }
+  | { type: 'CARD_PLAYED'; cardId: string; card?: Card; suitChoice?: CardSuit; timestamp: number }
   | { type: 'PICK_CARD'; timestamp: number }
   | { type: 'CALL_SUIT'; suit: CardSuit; timestamp: number }
   | { type: 'FORCED_DRAW'; timestamp: number };

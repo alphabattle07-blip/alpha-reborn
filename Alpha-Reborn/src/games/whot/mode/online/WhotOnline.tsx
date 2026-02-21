@@ -108,6 +108,7 @@ const WhotOnlineUI = () => {
   const actionQueueRef = useRef<(() => Promise<void>)[]>([]);
   const isProcessingQueueRef = useRef(false);
   const playerHandIdsSV = useSharedValue<string[]>([]);
+  const pendingWhotCardId = useRef<string | null>(null);
 
   // --- MEMOIZATION REFS ---
   const prevBoardStringRef = useRef<string | null>(null);
@@ -138,6 +139,10 @@ const WhotOnlineUI = () => {
   // The 800ms delay was causing a severe race condition against the server's
   // initial gameStateUpdate, leading to missing card refs during the initial deal.
   const [areCardsReadyToRender, setCardsReadyToRender] = useState(true);
+
+  // --- LOCAL SCROLL STATE ---
+  // Persists the hand order across server updates so scrolling works seamlessly.
+  const [localHandOrder, setLocalHandOrder] = useState<string[]>([]);
 
   // --- 3. INIT MATCHMAKING ---
   useEffect(() => {
@@ -245,25 +250,8 @@ const WhotOnlineUI = () => {
   };
 
   // --- 7. LOGIC HELPERS ---
-  const rotateGameState = (state: GameState): GameState => {
-    const rotated = {
-      ...state,
-      players: [state.players[1], state.players[0]],
-      currentPlayer: state.currentPlayer === 0 ? 1 : 0,
-    } as GameState;
-
-    if (rotated.pendingAction) {
-      const pAction = { ...rotated.pendingAction };
-      if (typeof pAction.playerIndex === 'number') {
-        pAction.playerIndex = pAction.playerIndex === 0 ? 1 : 0;
-      }
-      if ('returnTurnTo' in pAction && typeof pAction.returnTurnTo === 'number') {
-        pAction.returnTurnTo = pAction.returnTurnTo === 0 ? 1 : 0;
-      }
-      rotated.pendingAction = pAction as any;
-    }
-    return rotated;
-  };
+  // rotateGameState is no longer needed because the server's `scrubStateForClient` 
+  // pre-rotates the board (always puts the receiving player at index 0).
 
   // --- 8. STATE MEMOIZATION ---
   const { visualGameState, reconstructedAllCards } = useMemo(() => {
@@ -308,6 +296,16 @@ const WhotOnlineUI = () => {
       players: serverState.players.map(p => ({ ...p, hand: p.hand || [] }))
     };
 
+    // Apply local paging order to player 0's hand
+    if (localHandOrder.length > 0 && safeState.players[0]) {
+      const orderMap = new Map(localHandOrder.map((id, index) => [id, index]));
+      safeState.players[0].hand = [...safeState.players[0].hand].sort((a, b) => {
+        const idxA = orderMap.has(a.id) ? orderMap.get(a.id)! : 9999;
+        const idxB = orderMap.has(b.id) ? orderMap.get(b.id)! : 9999;
+        return idxA - idxB;
+      });
+    }
+
     if (stableAllCardsRef.current.length === 0) {
       let allCards = safeState.allCards;
       if (!allCards || allCards.length === 0) {
@@ -331,15 +329,11 @@ const WhotOnlineUI = () => {
 
     const startCards = stableAllCardsRef.current;
 
-    if (!needsRotation) {
-      return { visualGameState: { ...safeState, allCards: startCards }, reconstructedAllCards: startCards };
-    }
+    // The backend `scrubStateForClient` already guarantees that the local player
+    // is at `players[0]`. Thus, no client-side rotation is needed!
+    return { visualGameState: { ...safeState, allCards: startCards }, reconstructedAllCards: startCards };
 
-    const rotated = rotateGameState(safeState);
-    rotated.allCards = startCards;
-    return { visualGameState: rotated, reconstructedAllCards: startCards };
-
-  }, [currentGame?.board, needsRotation, userProfile?.id]);
+  }, [currentGame?.board, userProfile?.id, localHandOrder]);
 
   useEffect(() => {
     if (visualGameState?.players?.[0]?.hand) {
@@ -357,6 +351,10 @@ const WhotOnlineUI = () => {
     const dealer = cardListRef.current;
 
     requestAnimationFrame(() => {
+      visualGameState.market.forEach((c, i) => {
+        dealer.teleportCard(c, "market", { cardIndex: i });
+      });
+
       visualGameState.pile.forEach((c, i) => {
         dealer.teleportCard(c, "pile", { cardIndex: i });
       });
@@ -594,11 +592,12 @@ const WhotOnlineUI = () => {
         }
 
         if (card.number === 20 && newState.pendingAction?.type === 'call_suit') {
+          pendingWhotCardId.current = card.id;
           setIsSuitSelectorOpen(true);
         }
 
         return { newState, animationPromise: animPromise };
-      }, { type: 'CARD_PLAYED', cardId: card.id, timestamp: Date.now() });
+      }, card.number === 20 ? undefined : { type: 'PLAY_CARD', cardId: card.id, timestamp: Date.now() }); // Delay emit for card 20
     };
   });
 
@@ -611,9 +610,9 @@ const WhotOnlineUI = () => {
 
     const isSurrender = (visualGameState?.pendingAction?.type === 'draw' || visualGameState?.pendingAction?.type === 'defend') && visualGameState?.pendingAction.playerIndex === 0;
 
-    const socketAction: WhotGameAction = isSurrender
-      ? { type: 'FORCED_DRAW', timestamp: Date.now() }
-      : { type: 'PICK_CARD', timestamp: Date.now() };
+    // The backend `whotGameEngine.js` validateMove function expects exactly `{ type: 'DRAW' }`.
+    // Previously we sent 'PICK_CARD' and 'FORCED_DRAW' which caused the server to silently reject the move.
+    const socketAction: WhotGameAction = { type: 'DRAW', timestamp: Date.now() };
 
     handleAction(async (baseState) => {
       const dealer = cardListRef.current;
@@ -704,36 +703,49 @@ const WhotOnlineUI = () => {
 
   const onSuitSelect = (suit: CardSuit) => {
     setIsSuitSelectorOpen(false);
+    const cardId = pendingWhotCardId.current;
+
     handleAction(async (baseState) => {
       const newState = callSuit(baseState, 0, suit);
       return newState;
-    }, { type: 'CALL_SUIT', suit, timestamp: Date.now() });
+    }, cardId ? { type: 'PLAY_CARD', cardId, calledSuit: suit, timestamp: Date.now() } : undefined);
+
+    pendingWhotCardId.current = null;
   };
 
   const handlePagingPress = async () => {
     const dealer = cardListRef.current;
     if (!dealer || isAnimating || isAnimatingRef.current || !visualGameState) return;
+
     const myHand = visualGameState.players[0].hand;
     if (myHand.length <= playerHandLimit) return;
+
     const lastCard = myHand[myHand.length - 1];
     const rotatedHand = [lastCard, ...myHand.slice(0, -1)];
+
+    setIsAnimating(true);
+    isAnimatingRef.current = true;
+
+    // Instantly update UI and Redux-independent state
+    setLocalHandOrder(rotatedHand.map(c => c.id));
+
     dealer.teleportCard(lastCard, "player", { cardIndex: -1, handSize: layoutHandSize, zIndex: 90 });
-    handleAction(async () => {
-      const newState = {
-        ...visualGameState,
-        players: visualGameState.players.map((p, i) => i === 0 ? { ...p, hand: rotatedHand } : p)
-      };
-      const animationPromises: Promise<void>[] = [];
-      rotatedHand.slice(0, layoutHandSize).forEach((c, idx) => {
-        animationPromises.push(dealer.dealCard(c, "player", { cardIndex: idx, handSize: layoutHandSize }, false));
-      });
-      if (rotatedHand.length > layoutHandSize) {
-        const cardLeaving = rotatedHand[layoutHandSize];
-        animationPromises.push(dealer.dealCard(cardLeaving, "player", { cardIndex: 5, handSize: layoutHandSize, zIndex: 90 }, false));
-      }
-      await Promise.all(animationPromises);
-      return newState;
+
+    const animationPromises: Promise<void>[] = [];
+    rotatedHand.slice(0, layoutHandSize).forEach((c, idx) => {
+      animationPromises.push(dealer.dealCard(c, "player", { cardIndex: idx, handSize: layoutHandSize }, false));
     });
+
+    if (rotatedHand.length > layoutHandSize) {
+      const cardLeaving = rotatedHand[layoutHandSize];
+      animationPromises.push(dealer.dealCard(cardLeaving, "player", { cardIndex: 5, handSize: layoutHandSize, zIndex: 90 }, false));
+    }
+
+    await Promise.all(animationPromises);
+
+    lastAnimationTimeRef.current = Date.now();
+    setIsAnimating(false);
+    isAnimatingRef.current = false;
   };
 
   const onCardListReady = () => {
