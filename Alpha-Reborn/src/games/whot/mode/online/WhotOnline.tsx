@@ -18,7 +18,7 @@ import { useToast } from '../../../../hooks/useToast';
 import { animationLock } from './animationLock';
 import { animationQueue } from './animationQueue';
 
-// --- ERROR BOUNDARY ---
+// --- ERROR BOUNDARY --
 interface ErrorBoundaryState {
   hasError: boolean;
   errorMessage: string;
@@ -110,6 +110,11 @@ const WhotOnlineUI = () => {
   const playerHandIdsSV = useSharedValue<string[]>([]);
   const pendingWhotCardId = useRef<string | null>(null);
 
+  // --- DISPLAYED HAND ---
+  // The hand that WhotCoreUI actually renders. New cards are merged into this
+  // only AFTER their market→hand animation completes. This prevents teleporting.
+  const [displayedHand, setDisplayedHand] = useState<Card[]>([]);
+
   // --- MEMOIZATION REFS ---
   const prevBoardStringRef = useRef<string | null>(null);
   const stableBoardRef = useRef<GameState | null>(null);
@@ -181,7 +186,8 @@ const WhotOnlineUI = () => {
   }, [currentGame?.id, userProfile?.id]);
 
   // --- 5. APPLY STATE HELPER ---
-  // Single place where game state is applied to Redux. Never called during animations.
+  // Always dispatches to Redux immediately. The displayed hand is managed
+  // separately via the draw detection effect below.
   const applyStateUpdate = useCallback((board: any, serverTime?: number) => {
     if (!currentGame) return;
     dispatch(setCurrentGame({ ...currentGame, board }));
@@ -189,6 +195,7 @@ const WhotOnlineUI = () => {
       setServerTimeOffset(Date.now() - serverTime);
     }
   }, [currentGame, dispatch]);
+
 
   // --- 6. ANIMATION QUEUE DRAIN CALLBACK ---
   // When the queue finishes all jobs, flush any stashed state update.
@@ -357,12 +364,54 @@ const WhotOnlineUI = () => {
 
   }, [currentGame?.board, userProfile?.id, localHandOrder]);
 
-  // Update shared value for reanimated
+  // Update shared value for reanimated — use displayedHand, not redux hand
   useEffect(() => {
-    if (visualGameState?.players?.[0]?.hand) {
-      playerHandIdsSV.value = visualGameState.players[0].hand.map(c => c.id);
+    playerHandIdsSV.value = displayedHand.map(c => c.id);
+  }, [displayedHand]);
+
+  // --- 5b. DRAW DETECTION & ANIMATION ---
+  // Compares Redux hand (visualGameState) vs displayedHand.
+  // New cards → animate from market → hand, then merge into displayedHand.
+  // Removed cards (played) → sync displayedHand immediately.
+  useEffect(() => {
+    if (!hasDealt || !visualGameState?.players?.[0]?.hand) return;
+
+    const reduxHand: Card[] = visualGameState.players[0].hand;
+    const displayedIds = new Set(displayedHand.map(c => c.id));
+    const reduxIds = new Set(reduxHand.map(c => c.id));
+
+    // Cards that were removed (played) — sync immediately
+    const removedCards = displayedHand.filter(c => !reduxIds.has(c.id));
+    if (removedCards.length > 0 && displayedHand.length > 0) {
+      setDisplayedHand(prev => prev.filter(c => reduxIds.has(c.id)));
     }
-  }, [visualGameState]);
+
+    // Cards that are new (drawn) — animate then merge
+    const newCards = reduxHand.filter(c => !displayedIds.has(c.id));
+    if (newCards.length > 0 && cardListRef.current) {
+      const dealer = cardListRef.current;
+      animationQueue.enqueue(async () => {
+        setIsAnimating(true);
+
+        for (let i = 0; i < newCards.length; i++) {
+          const card = newCards[i];
+          // Compute the hand size AFTER this card is merged
+          const projectedHandSize = displayedHand.length - removedCards.length + i + 1;
+          const handSize = Math.min(projectedHandSize, layoutHandSize);
+          const visibleIndex = Math.min(i, layoutHandSize - 1);
+
+          // Animate card from market position to player hand
+          await Promise.all([
+            dealer.dealCard(card, 'player', { cardIndex: visibleIndex, handSize }, false),
+            dealer.flipCard(card, true)
+          ]);
+
+          // Merge this card into displayedHand immediately after its animation
+          setDisplayedHand(prev => [card, ...prev]);
+        }
+      });
+    }
+  }, [visualGameState?.players?.[0]?.hand, hasDealt]);
 
   // --- 9. ANIMATE REMOTE ACTION (Pure Visual, No State Mutation) ---
   const animateRemoteAction = async (action: WhotGameAction): Promise<void> => {
@@ -472,13 +521,8 @@ const WhotOnlineUI = () => {
   const onPickFromMarket = () => {
     if (!visualGameState || visualGameState.currentPlayer !== 0 || !currentGame?.id) return;
 
-    // Visual pacing — brief animation
-    animationQueue.enqueue(async () => {
-      setIsAnimating(true);
-      await new Promise(r => setTimeout(r, 100));
-    });
-
-    // Emit DRAW to server
+    // Emit DRAW to server immediately — animation will be triggered by
+    // applyStateUpdate when it detects new cards in the hand
     logEmit();
     socketService.emitMove(currentGame.id, {
       type: 'DRAW',
@@ -566,6 +610,10 @@ const WhotOnlineUI = () => {
     await Promise.all(dealPromises);
     const flips = visiblePlayerHand.map(c => dealer.flipCard(c, true));
     await Promise.all(flips);
+
+    // Seed displayedHand with the initial hand
+    setDisplayedHand([...h1]);
+
     setIsAnimating(false);
     setHasDealt(true);
   };
@@ -617,6 +665,19 @@ const WhotOnlineUI = () => {
     navigation.navigate('GameHome' as never);
   };
 
+  // Build the visual game state for WhotCoreUI — override player hand with displayedHand
+  // MUST be above early returns so hooks always run in the same order.
+  const coreUIGameState = useMemo(() => {
+    if (!visualGameState) return null;
+    return {
+      ...visualGameState,
+      players: [
+        { ...visualGameState.players[0], hand: displayedHand },
+        visualGameState.players[1]
+      ]
+    };
+  }, [visualGameState, displayedHand]);
+
   // --- RENDER ---
   const areFontsReady = stableFont !== null && stableWhotFont !== null;
   if (!currentGame || !visualGameState || !areFontsReady || !assetsReady || !areCardsReadyToRender) {
@@ -649,17 +710,19 @@ const WhotOnlineUI = () => {
     );
   }
 
+
+
   const opponent = isPlayer2 ? currentGame.player1 : currentGame.player2;
   return (
     <WhotCoreUI
       game={{
-        gameState: visualGameState,
+        gameState: coreUIGameState!,
         allCards: areCardsReadyToRender ? reconstructedAllCards : []
       }}
       playerState={{
         name: userProfile?.name || 'You',
         rating: userProfile?.rating || 1200,
-        handLength: visualGameState.players?.[0]?.hand?.length || 0,
+        handLength: displayedHand.length,
         isCurrentPlayer: visualGameState.currentPlayer === 0,
         avatar: userProfile?.avatar
       }}
@@ -689,7 +752,7 @@ const WhotOnlineUI = () => {
       onPagingPress={handlePagingPress}
       onSuitSelect={onSuitSelect}
       onCardListReady={onCardListReady}
-      showPagingButton={(visualGameState.players?.[0]?.hand?.length || 0) > playerHandLimit}
+      showPagingButton={displayedHand.length > playerHandLimit}
       allCards={areCardsReadyToRender ? reconstructedAllCards : []}
       playerHandIdsSV={playerHandIdsSV}
       gameInstanceId={currentGame.id || 'whot-online'}
