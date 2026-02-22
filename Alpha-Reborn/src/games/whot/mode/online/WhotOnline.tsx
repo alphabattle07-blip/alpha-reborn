@@ -370,9 +370,9 @@ const WhotOnlineUI = () => {
   }, [displayedHand]);
 
   // --- 5b. DRAW DETECTION & ANIMATION ---
-  // Compares Redux hand (visualGameState) vs displayedHand.
-  // New cards → animate from market → hand, then merge into displayedHand.
-  // Removed cards (played) → sync displayedHand immediately.
+  // Mirrors computer mode pattern: teleport drawn cards to market, then animate
+  // ALL hand cards to their final positions simultaneously — old cards shift right
+  // while new cards travel from market to index 0.
   useEffect(() => {
     if (!hasDealt || !visualGameState?.players?.[0]?.hand) return;
 
@@ -386,29 +386,61 @@ const WhotOnlineUI = () => {
       setDisplayedHand(prev => prev.filter(c => reduxIds.has(c.id)));
     }
 
-    // Cards that are new (drawn) — animate then merge
+    // Cards that are new (drawn) — animate using computer mode pattern
     const newCards = reduxHand.filter(c => !displayedIds.has(c.id));
     if (newCards.length > 0 && cardListRef.current) {
       const dealer = cardListRef.current;
+      const newCardIds = new Set(newCards.map(c => c.id));
+
       animationQueue.enqueue(async () => {
         setIsAnimating(true);
 
-        for (let i = 0; i < newCards.length; i++) {
-          const card = newCards[i];
-          // Compute the hand size AFTER this card is merged
-          const projectedHandSize = displayedHand.length - removedCards.length + i + 1;
-          const handSize = Math.min(projectedHandSize, layoutHandSize);
-          const visibleIndex = Math.min(i, layoutHandSize - 1);
+        // Step 1: Teleport drawn cards to market position (snap, no animation)
+        newCards.forEach(card => {
+          dealer.teleportCard(card, 'market', { cardIndex: 0 });
+        });
 
-          // Animate card from market position to player hand
-          await Promise.all([
-            dealer.dealCard(card, 'player', { cardIndex: visibleIndex, handSize }, false),
-            dealer.flipCard(card, true)
-          ]);
+        // Step 2: Small delay for UI thread to register teleport
+        await new Promise(r => setTimeout(r, 40));
 
-          // Merge this card into displayedHand immediately after its animation
-          setDisplayedHand(prev => [card, ...prev]);
-        }
+        // Step 3: Merge drawn cards into displayedHand BEFORE animating
+        // so the hand has the correct card count for position calculation.
+        setDisplayedHand(prev => [...newCards, ...prev]);
+
+        // Step 4: Small delay for state to settle
+        await new Promise(r => setTimeout(r, 20));
+
+        // Step 5: Animate ALL visible hand cards to new positions simultaneously
+        // — old cards shift right, new cards travel from market to hand
+        const fullHand = [...newCards, ...displayedHand.filter(c => reduxIds.has(c.id))];
+        const visibleHand = fullHand.slice(0, layoutHandSize);
+        const animationPromises: Promise<void>[] = [];
+
+        visibleHand.forEach((card, index) => {
+          animationPromises.push(
+            dealer.dealCard(card, 'player', { cardIndex: index, handSize: layoutHandSize }, false)
+          );
+          // Flip drawn cards face up
+          if (newCardIds.has(card.id)) {
+            animationPromises.push(dealer.flipCard(card, true));
+          }
+        });
+
+        // Cards pushed out of visible range
+        const cardsLeaving = displayedHand
+          .filter(c => reduxIds.has(c.id))
+          .slice(layoutHandSize - newCards.length);
+        cardsLeaving.forEach((card, index) => {
+          animationPromises.push(
+            dealer.dealCard(card, 'player', {
+              cardIndex: layoutHandSize + index,
+              handSize: layoutHandSize,
+              zIndex: 90
+            }, false)
+          );
+        });
+
+        await Promise.all(animationPromises);
       });
     }
   }, [visualGameState?.players?.[0]?.hand, hasDealt]);
