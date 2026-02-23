@@ -62,17 +62,23 @@ export const getCoords = (
         const maxAllowedWidth =
           CARD_WIDTH + (maxCardsBeforeSqueeze - 1) * (CARD_WIDTH + defaultSpacing);
 
-        let visualWidth = CARD_WIDTH + defaultSpacing;
-        let totalWidth = handSize * visualWidth - defaultSpacing;
+        const clampedHandSize = Math.min(handSize, maxCardsBeforeSqueeze);
 
-        if (handSize > maxCardsBeforeSqueeze) {
+        // Use clamped size for width calculation so it doesn't push past visual bounds
+        let visualWidth = CARD_WIDTH + defaultSpacing;
+        let totalWidth = clampedHandSize * visualWidth - defaultSpacing;
+
+        if (clampedHandSize > maxCardsBeforeSqueeze) {
           totalWidth = maxAllowedWidth;
-          visualWidth = (maxAllowedWidth - CARD_WIDTH) / (handSize - 1);
+          visualWidth = (maxAllowedWidth - CARD_WIDTH) / (clampedHandSize - 1);
         }
 
         // Fixed: Ensure division by 2 is present
         const startX = (screenWidth - totalWidth) / 2;
-        const x = startX + cardIndex * visualWidth + CARD_WIDTH / 2;
+
+        // If card index is beyond visual limit, stack it at the last visible position (index 5)
+        const visualClampedIndex = Math.min(cardIndex, maxCardsBeforeSqueeze - 1);
+        const x = startX + visualClampedIndex * visualWidth + CARD_WIDTH / 2;
 
         return { x, y, rotation: 0 };
       } else {
@@ -90,17 +96,21 @@ export const getCoords = (
         const defaultSpacing = CARD_WIDTH * 0.9;
         let visualWidth = defaultSpacing;
 
-        // Calculate how wide the hand WOULD be without squeezing
-        const potentialWidth = CARD_WIDTH + (handSize - 1) * defaultSpacing;
+        const maxCardsBeforeSqueeze = 6;
+        const clampedHandSize = Math.min(handSize, maxCardsBeforeSqueeze);
+
+        // Calculate how wide the hand WOULD be without squeezing using clamped size
+        const potentialWidth = CARD_WIDTH + (clampedHandSize - 1) * defaultSpacing;
 
         // If hand exceeds width, recalculate spacing to squeeze
-        if (potentialWidth > maxAllowedWidth && handSize > 1) {
-          visualWidth = (maxAllowedWidth - CARD_WIDTH) / (handSize - 1);
+        if (potentialWidth > maxAllowedWidth && clampedHandSize > 1) {
+          visualWidth = (maxAllowedWidth - CARD_WIDTH) / (clampedHandSize - 1);
         }
 
         // 4. Position Calculation
         // The 0-index card stays at startMargin. Subsequent cards grow rightward.
-        const x = startMargin + (cardIndex * visualWidth) + (CARD_WIDTH / 2);
+        const visualClampedIndex = Math.min(cardIndex, maxCardsBeforeSqueeze - 1);
+        const x = startMargin + (visualClampedIndex * visualWidth) + (CARD_WIDTH / 2);
 
         return { x, y, rotation: 0 };
       }
@@ -112,26 +122,35 @@ export const getCoords = (
       const boxHeight = CARD_HEIGHT + 10;
       const y = screenHeight - boxBottomMargin - boxHeight / 1.4; // height of the card in landscape
 
+      const maxPlayerCards = 6;
+
       if (isLandscape) {
         const spacing = 5;
         const visualWidth = CARD_WIDTH + spacing;
-        const totalWidth = handSize * visualWidth - spacing;
+        const clampedHandSize = Math.min(handSize, maxPlayerCards);
+        const totalWidth = clampedHandSize * visualWidth - spacing;
         const startX = (screenWidth - totalWidth) / 2;
-        const x = startX + cardIndex * visualWidth + CARD_WIDTH / 1; // width of the card in landscape
+
+        const visualClampedIndex = Math.min(cardIndex, maxPlayerCards - 1);
+        const x = startX + visualClampedIndex * visualWidth + CARD_WIDTH / 1; // width of the card in landscape
         return { x, y, rotation: 0 };
       } else {
         // Player Squeezing logic (unchanged)
         const maxPlayerWidth = screenWidth * 0.9;
         const defaultVisualWidth = CARD_WIDTH * 0.6;
-        let totalWidth = CARD_WIDTH + (handSize - 1) * defaultVisualWidth;
+
+        const clampedHandSize = Math.min(handSize, maxPlayerCards);
+        let totalWidth = CARD_WIDTH + (clampedHandSize - 1) * defaultVisualWidth;
         let visualWidth = defaultVisualWidth;
 
-        if (totalWidth > maxPlayerWidth && handSize > 1) {
-          visualWidth = (maxPlayerWidth - CARD_WIDTH) / (handSize - 1);
+        if (totalWidth > maxPlayerWidth && clampedHandSize > 1) {
+          visualWidth = (maxPlayerWidth - CARD_WIDTH) / (clampedHandSize - 1);
           totalWidth = maxPlayerWidth;
         }
         const startX = (screenWidth - totalWidth) / 2;
-        const x = startX + cardIndex * visualWidth + CARD_WIDTH / 6;
+
+        const visualClampedIndex = Math.min(cardIndex, maxPlayerCards - 1);
+        const x = startX + visualClampedIndex * visualWidth + CARD_WIDTH / 6;
         return { x, y, rotation: 0 };
       }
     }
