@@ -97,6 +97,8 @@ const WhotOnlineUI = () => {
   // `isAnimating` React state drives UI lock (passed to WhotCoreUI).
   // The actual lock is in `animationLock.isAnimating` (checked synchronously by socket handlers).
   const [isAnimating, setIsAnimating] = useState(false);
+  // Incremented every time the animation queue fully drains — used to trigger snap effects
+  const [snapTrigger, setSnapTrigger] = useState(0);
 
   // --- DEFERRED STATE ---
   // When a gameStateUpdate arrives while animating, it's stashed here.
@@ -114,6 +116,11 @@ const WhotOnlineUI = () => {
   // The hand that WhotCoreUI actually renders. New cards are merged into this
   // only AFTER their market→hand animation completes. This prevents teleporting.
   const [displayedHand, setDisplayedHand] = useState<Card[]>([]);
+  // Always-fresh ref so async closures inside animation jobs read current displayedHand
+  const displayedHandRef = useRef<Card[]>([]);
+  // Card IDs currently in-flight (teleported but not yet in displayedHand).
+  // Prevents draw detection from re-triggering the same animation on re-fires.
+  const pendingDrawIdsRef = useRef<Set<string>>(new Set());
 
   // --- MEMOIZATION REFS ---
   const prevBoardStringRef = useRef<string | null>(null);
@@ -202,6 +209,9 @@ const WhotOnlineUI = () => {
   useEffect(() => {
     animationQueue.onQueueDrained = () => {
       setIsAnimating(false);
+      // Bump snap trigger so pile/market/opponent/player snap effects re-evaluate
+      // after animations complete (deps may have changed while queue was running)
+      setSnapTrigger(n => n + 1);
       if (pendingStateRef.current) {
         const { board, serverTime } = pendingStateRef.current;
         pendingStateRef.current = null;
@@ -364,83 +374,112 @@ const WhotOnlineUI = () => {
 
   }, [currentGame?.board, userProfile?.id, localHandOrder]);
 
-  // Update shared value for reanimated — use displayedHand, not redux hand
+  // Keep ref in sync with state so async closures always read fresh displayedHand
   useEffect(() => {
+    displayedHandRef.current = displayedHand;
     playerHandIdsSV.value = displayedHand.map(c => c.id);
   }, [displayedHand]);
 
   // --- 5b. DRAW DETECTION & ANIMATION ---
   // Mirrors computer mode pattern: teleport drawn cards to market, then animate
-  // ALL hand cards to their final positions simultaneously — old cards shift right
-  // while new cards travel from market to index 0.
+  // cards into the hand one-by-one sequentially.
   useEffect(() => {
     if (!hasDealt || !visualGameState?.players?.[0]?.hand) return;
 
     const reduxHand: Card[] = visualGameState.players[0].hand;
-    const displayedIds = new Set(displayedHand.map(c => c.id));
+    // Read fresh displayedHand from ref — not from stale effect closure
+    const currentDisplayedHand = displayedHandRef.current;
+    const displayedIds = new Set(currentDisplayedHand.map(c => c.id));
     const reduxIds = new Set(reduxHand.map(c => c.id));
 
     // Cards that were removed (played) — sync immediately
-    const removedCards = displayedHand.filter(c => !reduxIds.has(c.id));
-    if (removedCards.length > 0 && displayedHand.length > 0) {
+    const removedCards = currentDisplayedHand.filter(c => !reduxIds.has(c.id));
+    if (removedCards.length > 0) {
       setDisplayedHand(prev => prev.filter(c => reduxIds.has(c.id)));
     }
 
-    // Cards that are new (drawn) — animate using computer mode pattern
-    const newCards = reduxHand.filter(c => !displayedIds.has(c.id));
+    // Cards that are TRULY new: not displayed AND not already in-flight
+    const newCards = reduxHand.filter(
+      c => !displayedIds.has(c.id) && !pendingDrawIdsRef.current.has(c.id)
+    );
     if (newCards.length > 0 && cardListRef.current) {
       const dealer = cardListRef.current;
-      const newCardIds = new Set(newCards.map(c => c.id));
+
+      // IMMEDIATELY mark these cards as in-flight so re-fires of this effect
+      // (caused by localHandOrder -> visualGameState chain) find no new cards.
+      newCards.forEach(c => pendingDrawIdsRef.current.add(c.id));
+
+      // Snapshot surviving displayed cards now — safe to capture in closure
+      const survivingDisplayed = currentDisplayedHand.filter(c => reduxIds.has(c.id));
 
       animationQueue.enqueue(async () => {
         setIsAnimating(true);
 
-        // Step 1: Teleport drawn cards to market position (snap, no animation)
+        // ── SEQUENTIAL CARD-BY-CARD ANIMATION ──
+        // Teleport ALL new cards to market first (hidden start position)
         newCards.forEach(card => {
           dealer.teleportCard(card, 'market', { cardIndex: 0 });
         });
 
-        // Step 2: Small delay for UI thread to register teleport
+        // Let UI thread register all teleports before animating
         await new Promise(r => setTimeout(r, 40));
 
-        // Step 3: Merge drawn cards into displayedHand BEFORE animating
-        // so the hand has the correct card count for position calculation.
-        setDisplayedHand(prev => [...newCards, ...prev]);
+        // Grow the hand one card at a time
+        let currentHand = [...survivingDisplayed];
 
-        // Step 4: Small delay for state to settle
-        await new Promise(r => setTimeout(r, 20));
+        for (let i = 0; i < newCards.length; i++) {
+          const drawnCard = newCards[i];
 
-        // Step 5: Animate ALL visible hand cards to new positions simultaneously
-        // — old cards shift right, new cards travel from market to hand
-        const fullHand = [...newCards, ...displayedHand.filter(c => reduxIds.has(c.id))];
-        const visibleHand = fullHand.slice(0, layoutHandSize);
-        const animationPromises: Promise<void>[] = [];
+          // Prepend this card to the front
+          currentHand = [drawnCard, ...currentHand];
+          const handSnapshot = [...currentHand];
 
-        visibleHand.forEach((card, index) => {
-          animationPromises.push(
-            dealer.dealCard(card, 'player', { cardIndex: index, handSize: layoutHandSize }, false)
-          );
-          // Flip drawn cards face up
-          if (newCardIds.has(card.id)) {
-            animationPromises.push(dealer.flipCard(card, true));
+          // Update displayedHand (adds card to render tree)
+          // Do NOT update localHandOrder here — that would re-trigger visualGameState
+          // recomputation and cause this effect to fire again mid-loop.
+          setDisplayedHand(handSnapshot);
+
+          // Small pause for React to commit the state
+          await new Promise(r => setTimeout(r, 20));
+
+          // Animate all visible hand cards to their new positions
+          const visibleHand = handSnapshot.slice(0, layoutHandSize);
+          const animationPromises: Promise<void>[] = [];
+
+          visibleHand.forEach((card, index) => {
+            animationPromises.push(
+              dealer.dealCard(card, 'player', { cardIndex: index, handSize: layoutHandSize }, false)
+            );
+            if (card.id === drawnCard.id) {
+              animationPromises.push(dealer.flipCard(card, true));
+            }
+          });
+
+          // Push any card bumped out of visible range offscreen
+          handSnapshot.slice(layoutHandSize).forEach((card, index) => {
+            animationPromises.push(
+              dealer.dealCard(card, 'player', {
+                cardIndex: layoutHandSize + index,
+                handSize: layoutHandSize,
+                zIndex: 90
+              }, false)
+            );
+          });
+
+          await Promise.all(animationPromises);
+
+          // Pause between cards (matches computer mode feel)
+          if (i < newCards.length - 1) {
+            await new Promise(r => setTimeout(r, 200));
           }
-        });
+        }
 
-        // Cards pushed out of visible range
-        const cardsLeaving = displayedHand
-          .filter(c => reduxIds.has(c.id))
-          .slice(layoutHandSize - newCards.length);
-        cardsLeaving.forEach((card, index) => {
-          animationPromises.push(
-            dealer.dealCard(card, 'player', {
-              cardIndex: layoutHandSize + index,
-              handSize: layoutHandSize,
-              zIndex: 90
-            }, false)
-          );
-        });
+        // Update localHandOrder ONCE at the end — safe now that the loop is done
+        const finalHand = [...currentHand];
+        setLocalHandOrder(finalHand.map(c => c.id));
 
-        await Promise.all(animationPromises);
+        // Clear in-flight tracking — these cards are now in displayedHand
+        newCards.forEach(c => pendingDrawIdsRef.current.delete(c.id));
       });
     }
   }, [visualGameState?.players?.[0]?.hand, hasDealt]);
@@ -524,15 +563,27 @@ const WhotOnlineUI = () => {
         return;
       }
 
-      // Normal card → animate to pile + emit to server
+      // Normal card → animate to pile, then shift remaining hand cards into correct positions
       animationQueue.enqueue(async () => {
         setIsAnimating(true);
         if (dealer) {
           const zIndex = (visualGameState.pile?.length || 0) + 100;
+          // Animate the played card to the pile
           await Promise.all([
             dealer.dealCard(card, "pile", { cardIndex: zIndex }, false),
             dealer.flipCard(card, true)
           ]);
+
+          // Re-position the remaining visible hand cards so they close the gap.
+          // Use displayedHandRef for fresh state — the played card is still in it
+          // but will be removed by the draw-detection effect after server confirms.
+          // We optimistically position only the cards EXCLUDING the played one.
+          const handWithoutPlayed = displayedHandRef.current.filter(c => c.id !== card.id);
+          const visibleRemaining = handWithoutPlayed.slice(0, layoutHandSize);
+          const shiftPromises = visibleRemaining.map((handCard, index) =>
+            dealer.dealCard(handCard, 'player', { cardIndex: index, handSize: layoutHandSize }, false)
+          );
+          await Promise.all(shiftPromises);
         }
       });
 
@@ -650,47 +701,34 @@ const WhotOnlineUI = () => {
     setHasDealt(true);
   };
 
-  // --- 12. POST-DEAL STATE SNAP ---
-  // After the initial deal AND after any deferred state flush, snap all cards
-  // to their correct positions. This is NOT a diff-based animation trigger —
-  // it only runs when `hasDealt` changes or when the board updates while NOT animating.
+  // --- 12a. PILE & MARKET SNAP ---
+  // Snaps pile and market cards whenever state updates and no animation is running.
+  // Player and opponent hands are NOT snapped here — they are managed by explicit
+  // dealCard / teleportCard calls in the animation jobs above.
   useEffect(() => {
-    if (!hasDealt || !cardListRef.current || !visualGameState || animationLock.isAnimating) return;
+    if (!hasDealt || !cardListRef.current || !visualGameState) return;
+    if (animationLock.isAnimating || animationQueue.isRunning) return;
 
     const dealer = cardListRef.current;
+    visualGameState.market.forEach((c, i) => dealer.teleportCard(c, 'market', { cardIndex: i }));
+    visualGameState.pile.forEach((c, i) => dealer.teleportCard(c, 'pile', { cardIndex: i }));
+  }, [visualGameState?.pile?.length, visualGameState?.market?.length, hasDealt]);
 
-    requestAnimationFrame(() => {
-      // Snap market cards
-      visualGameState.market.forEach((c, i) => {
-        dealer.teleportCard(c, "market", { cardIndex: i });
-      });
+  // --- 12b. OPPONENT HAND SNAP ---
+  // Snaps opponent cards whenever their hand size changes (opponent drew or played).
+  // Uses the ACTUAL server hand length as handSize so all cards are spread correctly.
+  // Only runs when animation queue is idle to avoid fighting active animations.
+  useEffect(() => {
+    if (!hasDealt || !cardListRef.current || !visualGameState) return;
+    if (animationLock.isAnimating || animationQueue.isRunning) return;
 
-      // Snap pile cards
-      visualGameState.pile.forEach((c, i) => {
-        dealer.teleportCard(c, "pile", { cardIndex: i });
-      });
-
-      // Snap opponent hand
-      const oppHand = visualGameState.players[1].hand || [];
-      oppHand.forEach((c, i) => {
-        dealer.teleportCard(c, "computer", { cardIndex: i, handSize: oppHand.length });
-      });
-
-      // Snap player hand
-      const myHand = visualGameState.players[0].hand || [];
-      const visibleHand = myHand.slice(0, layoutHandSize);
-      const hiddenHand = myHand.slice(layoutHandSize);
-
-      visibleHand.forEach((c, i) => {
-        dealer.teleportCard(c, "player", { cardIndex: i, handSize: layoutHandSize });
-        dealer.flipCard(c, true);
-      });
-      hiddenHand.forEach((c) => {
-        dealer.teleportCard(c, "player", { cardIndex: 5, handSize: layoutHandSize, zIndex: 90 });
-        dealer.flipCard(c, true);
-      });
+    const dealer = cardListRef.current;
+    const oppHand = visualGameState.players[1]?.hand || [];
+    oppHand.forEach((c, i) => {
+      dealer.teleportCard(c, 'computer', { cardIndex: i, handSize: oppHand.length });
     });
-  }, [visualGameState, hasDealt]);
+  }, [visualGameState?.players?.[1]?.hand?.length, hasDealt]);
+
 
   const handleExit = () => {
     dispatch(clearCurrentGame());
