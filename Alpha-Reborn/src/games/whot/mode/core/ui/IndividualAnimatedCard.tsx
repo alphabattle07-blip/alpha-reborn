@@ -44,6 +44,7 @@ export interface IndividualAnimatedCardHandle {
     options?: any,
     timestamp?: number
   ) => void;
+  flipInstant: (faceUp: boolean) => void;
 }
 
 interface Props {
@@ -276,6 +277,9 @@ const IndividualAnimatedCard = memo(
               }
             );
           });
+        },
+        flipInstant(show) {
+          cardRotate.value = show ? Math.PI : 0;
         },
       }));
 

@@ -428,6 +428,7 @@ const WhotOnlineUI = () => {
         // Teleport ALL new cards to market first (hidden start position)
         newCards.forEach(card => {
           dealer.teleportCard(card, 'market', { cardIndex: 0 });
+          dealer.flipInstant(card, false);
         });
 
         // Let UI thread register all teleports before animating
@@ -525,6 +526,7 @@ const WhotOnlineUI = () => {
         // Teleport ALL new cards to market first (hidden start position)
         newCards.forEach(card => {
           dealer.teleportCard(card, 'market', { cardIndex: 0 });
+          dealer.flipInstant(card, false);
         });
 
         await new Promise(r => setTimeout(r, 40));
@@ -790,8 +792,14 @@ const WhotOnlineUI = () => {
     if (animationLock.isAnimating || animationQueue.isRunning) return;
 
     const dealer = cardListRef.current;
-    visualGameState.market.forEach((c, i) => dealer.teleportCard(c, 'market', { cardIndex: i }));
-    visualGameState.pile.forEach((c, i) => dealer.teleportCard(c, 'pile', { cardIndex: i }));
+    visualGameState.market.forEach((c, i) => {
+      dealer.teleportCard(c, 'market', { cardIndex: i });
+      dealer.flipInstant(c, false);
+    });
+    visualGameState.pile.forEach((c, i) => {
+      dealer.teleportCard(c, 'pile', { cardIndex: i });
+      dealer.flipInstant(c, true);
+    });
   }, [visualGameState?.pile?.length, visualGameState?.market?.length, hasDealt]);
 
   // --- 12b. OPPONENT HAND SNAP ---

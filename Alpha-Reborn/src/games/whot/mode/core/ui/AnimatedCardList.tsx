@@ -47,6 +47,7 @@ export interface AnimatedCardListHandle {
     timestamp?: number
   ) => Promise<void>;
   flipCard: (card: Card, show: boolean) => Promise<void>;
+  flipInstant: (card: Card, show: boolean) => void;
   teleportCard: (
     card: Card,
     target: "player" | "computer" | "pile" | "market",
@@ -113,6 +114,14 @@ const AnimatedCardList = memo(
             await cardRef.flip(show);
           } else {
             console.warn(`No ref found for card ${card.id} during flip.`);
+          }
+        },
+        flipInstant: (card: Card, show: boolean) => {
+          const cardRef = cardRefs.current.get(card.id);
+          if (cardRef) {
+            cardRef.flipInstant(show);
+          } else {
+            console.warn(`No ref found for card ${card.id} during flipInstant.`);
           }
         },
         teleportCard: (card: Card, target: any, options: any, timestamp: any) => {
