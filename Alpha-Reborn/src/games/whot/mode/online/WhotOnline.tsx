@@ -122,6 +122,11 @@ const WhotOnlineUI = () => {
   // Prevents draw detection from re-triggering the same animation on re-fires.
   const pendingDrawIdsRef = useRef<Set<string>>(new Set());
 
+  // --- DISPLAYED OPPONENT HAND ---
+  const [displayedOpponentHand, setDisplayedOpponentHand] = useState<Card[]>([]);
+  const displayedOpponentHandRef = useRef<Card[]>([]);
+  const pendingOpponentDrawIdsRef = useRef<Set<string>>(new Set());
+
   // --- MEMOIZATION REFS ---
   const prevBoardStringRef = useRef<string | null>(null);
   const stableBoardRef = useRef<GameState | null>(null);
@@ -380,6 +385,10 @@ const WhotOnlineUI = () => {
     playerHandIdsSV.value = displayedHand.map(c => c.id);
   }, [displayedHand]);
 
+  useEffect(() => {
+    displayedOpponentHandRef.current = displayedOpponentHand;
+  }, [displayedOpponentHand]);
+
   // --- 5b. DRAW DETECTION & ANIMATION ---
   // Mirrors computer mode pattern: teleport drawn cards to market, then animate
   // cards into the hand one-by-one sequentially.
@@ -483,6 +492,76 @@ const WhotOnlineUI = () => {
       });
     }
   }, [visualGameState?.players?.[0]?.hand, hasDealt]);
+
+  // --- 5c. OPPONENT DRAW DETECTION & ANIMATION ---
+  useEffect(() => {
+    if (!hasDealt || !visualGameState?.players?.[1]?.hand) return;
+
+    const reduxOppHand: Card[] = visualGameState.players[1].hand;
+    const currentDisplayedOppHand = displayedOpponentHandRef.current;
+    const displayedIds = new Set(currentDisplayedOppHand.map(c => c.id));
+    const reduxIds = new Set(reduxOppHand.map(c => c.id));
+
+    // Cards that were removed (played) — sync immediately
+    const removedCards = currentDisplayedOppHand.filter(c => !reduxIds.has(c.id));
+    if (removedCards.length > 0) {
+      setDisplayedOpponentHand(prev => prev.filter(c => reduxIds.has(c.id)));
+    }
+
+    // Cards that are TRULY new: not displayed AND not already in-flight
+    const newCards = reduxOppHand.filter(
+      c => !displayedIds.has(c.id) && !pendingOpponentDrawIdsRef.current.has(c.id)
+    );
+
+    if (newCards.length > 0 && cardListRef.current) {
+      const dealer = cardListRef.current;
+
+      newCards.forEach(c => pendingOpponentDrawIdsRef.current.add(c.id));
+      const survivingDisplayed = currentDisplayedOppHand.filter(c => reduxIds.has(c.id));
+
+      animationQueue.enqueue(async () => {
+        setIsAnimating(true);
+
+        // Teleport ALL new cards to market first (hidden start position)
+        newCards.forEach(card => {
+          dealer.teleportCard(card, 'market', { cardIndex: 0 });
+        });
+
+        await new Promise(r => setTimeout(r, 40));
+
+        let currentHand = [...survivingDisplayed];
+
+        for (let i = 0; i < newCards.length; i++) {
+          const drawnCard = newCards[i];
+
+          // Opponent cards just append to their hand visually
+          currentHand = [...currentHand, drawnCard];
+          const handSnapshot = [...currentHand];
+
+          setDisplayedOpponentHand(handSnapshot);
+
+          await new Promise(r => setTimeout(r, 20));
+
+          // Animate all visible opponent hand cards to their new positions
+          const animationPromises: Promise<void>[] = [];
+          handSnapshot.forEach((card, index) => {
+            animationPromises.push(
+              dealer.dealCard(card, 'computer', { cardIndex: index, handSize: handSnapshot.length }, false)
+            );
+          });
+
+          await Promise.all(animationPromises);
+
+          if (i < newCards.length - 1) {
+            await new Promise(r => setTimeout(r, 200));
+          }
+        }
+
+        // Clear in-flight tracking
+        newCards.forEach(c => pendingOpponentDrawIdsRef.current.delete(c.id));
+      });
+    }
+  }, [visualGameState?.players?.[1]?.hand, hasDealt]);
 
   // --- 9. ANIMATE REMOTE ACTION (Pure Visual, No State Mutation) ---
   const animateRemoteAction = async (action: WhotGameAction): Promise<void> => {
@@ -696,6 +775,7 @@ const WhotOnlineUI = () => {
 
     // Seed displayedHand with the initial hand
     setDisplayedHand([...h1]);
+    setDisplayedOpponentHand([...h2]);
 
     setIsAnimating(false);
     setHasDealt(true);
@@ -723,11 +803,28 @@ const WhotOnlineUI = () => {
     if (animationLock.isAnimating || animationQueue.isRunning) return;
 
     const dealer = cardListRef.current;
-    const oppHand = visualGameState.players[1]?.hand || [];
-    oppHand.forEach((c, i) => {
-      dealer.teleportCard(c, 'computer', { cardIndex: i, handSize: oppHand.length });
+
+    // Check missing displayed opponent cards that might have been skipped
+    const reduxOppHand = visualGameState.players[1]?.hand || [];
+    const oppHandIds = new Set(reduxOppHand.map(c => c.id));
+    const dispHandIds = new Set(displayedOpponentHand.map(c => c.id));
+
+    // If the sizes don't match exactly and no animation running, force resync visually
+    // This acts as a fallback if the animation effect missed a state update due to queue locks.
+    if (oppHandIds.size !== dispHandIds.size) {
+      setDisplayedOpponentHand([...reduxOppHand]);
+    }
+
+    const currentOppHand = displayedOpponentHandRef.current;
+
+    // Only snap cards that STILL belong to the opponent's hand.
+    // This prevents snapping a just-played card back to the hand before React state updates.
+    const validOppCards = currentOppHand.filter(c => oppHandIds.has(c.id));
+
+    validOppCards.forEach((c, i) => {
+      dealer.teleportCard(c, 'computer', { cardIndex: i, handSize: validOppCards.length });
     });
-  }, [visualGameState?.players?.[1]?.hand?.length, hasDealt]);
+  }, [visualGameState?.players?.[1]?.hand?.length, hasDealt, displayedOpponentHand.length]);
 
 
   const handleExit = () => {
@@ -743,10 +840,10 @@ const WhotOnlineUI = () => {
       ...visualGameState,
       players: [
         { ...visualGameState.players[0], hand: displayedHand },
-        visualGameState.players[1]
+        { ...visualGameState.players[1], hand: displayedOpponentHand }
       ]
     };
-  }, [visualGameState, displayedHand]);
+  }, [visualGameState, displayedHand, displayedOpponentHand]);
 
   // --- RENDER ---
   const areFontsReady = stableFont !== null && stableWhotFont !== null;
