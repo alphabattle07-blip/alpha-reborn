@@ -79,25 +79,14 @@ const LudoOnline = () => {
 
     // --- Socket.IO Integration ---
     useEffect(() => {
-        if (currentGame?.id) {
+        if (currentGame?.id && userProfile?.id) {
+            socketService.register(userProfile.id);
             // 1. Join the game room
             socketService.joinGame(currentGame.id);
 
-            // 2. Listen for opponent moves
-            const unsubscribe = socketService.onOpponentMove((newState: LudoGameState) => {
-                // console.log("[LudoOnline] ⚡ Socket update received");
-
-                // Only process if it's NOT our action (redundant safety)
-                // Actually, the server broadcasts to others, so we shouldn't receive our own moves usually,
-                // unless we join with multiple sockets or server logic changes.
-                // We'll trust the swap logic in useMemo to handle the perspective.
-
+            // 2. Listen for game state updates
+            const unsubscribe = socketService.onGameStateUpdate((newState: LudoGameState) => {
                 // Update local store immediately
-                // We need to dispatch updateOnlineGameState or just update slice?
-                // updateOnlineGameState works, but it might be heavy if it triggers another fetch.
-                // Ideally, we just update the simple store.
-
-                // For now, let's treat it as a "fetch success"
                 dispatch(setCurrentGame({
                     ...currentGame,
                     board: newState
@@ -216,55 +205,57 @@ const LudoOnline = () => {
     }, [currentGame, isPlayer2]);
 
     const handleOnlineAction = async (newState: LudoGameState) => {
+        // Obsolete function, replaced by handleRoll and handleMove
+    };
+
+    const handleRoll = () => {
         if (!currentGame || !userProfile || !visualGameState) return;
 
-        // Strict Turn Validation: Only the player whose turn it is should update the server.
-        // visualGameState.currentPlayerIndex 0 is always the local player.
+        // Strict Turn Validation
         if (visualGameState.currentPlayerIndex !== 0) {
-            console.log("[LudoOnline] Action ignored: Not your turn to update server");
+            console.log("[LudoOnline] Action ignored: Not your turn to roll");
             return;
         }
 
-        // Transform back to logical state before sending to server
-        let logicalState = newState;
-        if (isPlayer2) {
-            const swappedPlayers = [
-                { ...newState.players[1], id: 'p1' },
-                { ...newState.players[0], id: 'p2' }
-            ];
-            logicalState = {
-                ...newState,
-                players: swappedPlayers,
-                currentPlayerIndex: newState.currentPlayerIndex === 1 ? 0 : 1,
-            };
-        }
-
         // --- Optimistic Update ---
-        pendingStateRef.current = newState;
+        // We could optimistically start a rolling animation, but for now we wait for server to resolve the dice
         lastActionTimeRef.current = Date.now();
 
         try {
-            // Determine the current turn ID based on the updated logical state
-            const nextTurnId = logicalState.currentPlayerIndex === 0
-                ? currentGame.player1.id
-                : (currentGame.player2?.id || '');
-
-            await dispatch(updateOnlineGameState({
-                gameId: currentGame.id,
-                updates: {
-                    board: logicalState as any,
-                    currentTurn: nextTurnId || undefined,
-                    winnerId: newState.winner === 'p1' ? userProfile.id : (newState.winner === 'p2' ? (isPlayer1 ? currentGame.player2?.id : currentGame.player1?.id) : undefined),
-                    status: newState.winner ? 'COMPLETED' : 'IN_PROGRESS'
-                }
-            })).unwrap();
-
-            // --- Socket Emit ---
-            // Broadcast the move to the opponent instantly
-            socketService.emitMove(currentGame.id, logicalState);
-
+            socketService.emitAction(currentGame.id, 'ludo', { type: 'ROLL_DICE' });
         } catch (error) {
-            console.error("Failed to update server", error);
+            console.error("Failed to emit roll", error);
+        }
+    };
+
+    const handleMove = (move: any) => {
+        if (!currentGame || !userProfile || !visualGameState) return;
+
+        // Strict Turn Validation
+        if (visualGameState.currentPlayerIndex !== 0) {
+            console.log("[LudoOnline] Action ignored: Not your turn to move");
+            return;
+        }
+
+        lastActionTimeRef.current = Date.now();
+
+        try {
+            socketService.emitAction(currentGame.id, 'ludo', { type: 'MOVE_PIECE', move: move });
+        } catch (error) {
+            console.error("Failed to emit move", error);
+        }
+    };
+
+    const handlePassTurn = () => {
+        if (!currentGame || !userProfile || !visualGameState) return;
+
+        if (visualGameState.currentPlayerIndex !== 0) return;
+
+        lastActionTimeRef.current = Date.now();
+        try {
+            socketService.emitAction(currentGame.id, 'ludo', { type: 'PASS_TURN' });
+        } catch (error) {
+            console.error("Failed to emit pass turn", error);
         }
     };
 
@@ -317,8 +308,9 @@ const LudoOnline = () => {
                         name: opponent.name,
                         rating: opponent.rating,
                     }}
-                    onMove={handleOnlineAction}
-                    onRoll={handleOnlineAction}
+                    onMove={handleMove}
+                    onRoll={handleRoll}
+                    onPassTurn={handlePassTurn}
                     onGameOver={() => { }} // Handled by status in update
                 />
 

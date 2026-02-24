@@ -115,6 +115,19 @@ class SocketService {
         });
     }
 
+    emitAction(gameId: string, gameType: string, data: any) {
+        if (!this.socket?.connected) {
+            console.warn(`[SocketService] Cannot emit action for ${gameType}, socket disconnected`);
+            return;
+        }
+        console.log(`[SocketService] Emitting gameAction: ${data?.type} for game: ${gameId}`);
+        this.socket.emit('gameAction', {
+            gameId,
+            gameType,
+            data
+        });
+    }
+
     disconnect() {
         if (this.socket) {
             this.socket.disconnect();

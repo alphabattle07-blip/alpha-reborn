@@ -98,6 +98,7 @@ type LudoGameProps = {
     onGameOver?: (winnerId: string) => void;
     onMove?: (state: LudoGameState) => void;
     onRoll?: (state: LudoGameState) => void;
+    onPassTurn?: () => void;
     level?: any;
 };
 
@@ -109,6 +110,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     onGameOver,
     onMove,
     onRoll,
+    onPassTurn,
     level,
 }) => {
     const navigation = useNavigation();
@@ -181,10 +183,15 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
             return;
         }
 
-        const newState = rollDice(gameState);
-        console.log("[LudoCoreUI] Dice rolled:", newState.dice);
-        setGameState(newState);
-        if (onRoll) onRoll(newState);
+        if (onRoll) {
+            // Online mode: Delegate intent to parent (LudoOnline)
+            onRoll(gameState);
+        } else {
+            // Local computer game: Apply immediately
+            const newState = rollDice(gameState);
+            console.log("[LudoCoreUI] Dice rolled:", newState.dice);
+            setGameState(newState);
+        }
     }, [gameState, onRoll, onMove]);
 
     // --- Auto Pass & Turn Logic ---
@@ -192,26 +199,27 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
         // Auto-pass conditions:
         // 1. Game is not over
         // 2. Dice have been rolled (!waitingForRoll)
-        // 3. Either:
-        //    a. Local computer game (no onMove) - runs for current turn (usually AI or player)
-        //    b. Online game (onMove present) - ONLY runs if it's the LOCAL player's turn (index 0)
-        //       to avoid race conditions where both clients try to pass for each other.
+        // 3. Either local computer game (no onMove) or online game where it's local turn
         const isLocalTurn = gameState.currentPlayerIndex === 0;
-        const canAutoPass = !gameState.waitingForRoll && !gameState.winner && (!onMove || isLocalTurn);
+        const isOnline = !!onMove || !!onPassTurn;
+        const canAutoPass = !gameState.waitingForRoll && !gameState.winner && (!isOnline || isLocalTurn);
 
         if (canAutoPass) {
             const moves = getValidMoves(gameState);
             if (moves.length === 0) {
-                console.log(`[LudoCoreUI] No moves available. Auto-passing turn for player ${gameState.currentPlayerIndex}`);
+                console.log(`[LudoCoreUI] No moves available. Auto-passing turn after delay for player ${gameState.currentPlayerIndex}`);
                 const timer = setTimeout(() => {
-                    const newState = passTurn(gameState);
-                    setGameState(newState);
-                    if (onMove) onMove(newState);
+                    if (onPassTurn) {
+                        onPassTurn();
+                    } else {
+                        const newState = passTurn(gameState);
+                        setGameState(newState);
+                    }
                 }, 1000);
                 return () => clearTimeout(timer);
             }
         }
-    }, [gameState, gameState.dice, gameState.diceUsed, gameState.waitingForRoll, onMove]);
+    }, [gameState, gameState.dice, gameState.diceUsed, gameState.waitingForRoll, onMove, onPassTurn]);
 
     // AI Turn Loop
     useEffect(() => {
@@ -250,9 +258,16 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                 const moves = getValidMoves(gameState);
                 const matchingMove = moves.find(move => move.seedIndex === tappedSeed.seedIndex);
                 if (matchingMove) {
-                    const newState = applyMove(gameState, matchingMove);
-                    setGameState(newState);
-                    if (onMove) onMove(newState);
+                    if (onMove) {
+                        // In online mode, LudoOnline expects the intent (the move object)
+                        // In offline mode, the parent doesn't need it or expects state, but we can standardise
+                        // Since LudoOnline.tsx expects a move now:
+                        onMove(matchingMove as any);
+                    } else {
+                        // Local computer game: apply immediately
+                        const newState = applyMove(gameState, matchingMove);
+                        setGameState(newState);
+                    }
                 }
             }
         }
