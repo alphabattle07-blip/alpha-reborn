@@ -37,6 +37,13 @@ const LudoOnline = () => {
     // Stores our local state after an action until the server confirms it
     const pendingStateRef = useRef<LudoGameState | null>(null);
     const lastActionTimeRef = useRef<number>(0);
+    const [timerSync, setTimerSync] = useState<{
+        turnStartTime?: number;
+        turnDuration?: number;
+        yellowAt?: number;
+        redAt?: number;
+        serverTimeOffset?: number;
+    } | null>(null);
 
     // Identify Player Role
     const isPlayer1 = currentGame?.player1?.id === userProfile?.id;
@@ -85,16 +92,42 @@ const LudoOnline = () => {
             socketService.joinGame(currentGame.id);
 
             // 2. Listen for game state updates
-            const unsubscribe = socketService.onGameStateUpdate((newState: LudoGameState) => {
+            const unsubscribe = socketService.onGameStateUpdate((newState: any) => {
                 // Update local store immediately
                 dispatch(setCurrentGame({
                     ...currentGame,
                     board: newState
                 }));
+
+                // If reconnection state provided remainingTime
+                if (newState.remainingTime !== undefined) {
+                    const serverTurnStart = (newState.serverTime || Date.now()) - (newState.turnDuration - newState.remainingTime);
+                    setTimerSync({
+                        turnStartTime: serverTurnStart,
+                        turnDuration: newState.turnDuration,
+                        yellowAt: newState.yellowAt,
+                        redAt: newState.redAt,
+                        serverTimeOffset: Date.now() - (newState.serverTime || Date.now())
+                    });
+                }
+            });
+
+            // 3. Listen for turn starts (Timer Sync)
+            const socket = socketService.getSocket();
+            socket.on('turnStarted', (data: any) => {
+                console.log("[LudoOnline] Turn Started Event:", data);
+                setTimerSync({
+                    turnStartTime: data.turnStartTime || (data.serverTime - (data.timeLimit - (data.remainingTime || data.timeLimit))),
+                    turnDuration: data.timeLimit,
+                    yellowAt: data.yellowAt,
+                    redAt: data.redAt,
+                    serverTimeOffset: Date.now() - data.serverTime
+                });
             });
 
             return () => {
                 unsubscribe();
+                socket.off('turnStarted');
                 socketService.leaveGame(currentGame.id);
             };
         }
@@ -311,6 +344,7 @@ const LudoOnline = () => {
                     onMove={handleMove}
                     onRoll={handleRoll}
                     onPassTurn={handlePassTurn}
+                    timerSync={timerSync || undefined}
                     onGameOver={() => { }} // Handled by status in update
                 />
 

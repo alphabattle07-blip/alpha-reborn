@@ -15,6 +15,7 @@ import {
 import { getRankFromRating } from '../../../../utils/rank';
 import { getComputerMove } from "../../computer/LudoComputerLogic";
 import { Ludo3DDie } from "./Ludo3DDie";
+import { LudoTimerRing } from "./LudoTimerRing";
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#222" },
@@ -60,34 +61,60 @@ const styles = StyleSheet.create({
     }
 });
 
-const DiceHouse = ({ dice, diceUsed, onPress, waitingForRoll, rankIcon, disabled }: { dice: number[], diceUsed: boolean[], onPress: () => void, waitingForRoll: boolean, rankIcon: string, disabled?: boolean }) => (
-    <TouchableOpacity
-        style={styles.diceHouse}
-        onPress={onPress}
-        disabled={disabled || !waitingForRoll}
-        activeOpacity={0.8}
-    >
-        <View style={styles.diceRow}>
-            {dice?.length > 0 ? (
-                (dice || []).map((d, i) => (
-                    <Ludo3DDie
-                        key={i}
-                        value={d}
-                        size={35}
-                        isUsed={diceUsed[i]}
-                    />
-                ))
-            ) : (
-                <View style={{ width: 35, height: 35 }} />
-            )}
-        </View>
-
-        {waitingForRoll && (
-            <View style={styles.diceOverlay}>
-                <Text style={styles.rankIconOverlay}>{rankIcon}</Text>
+const DiceHouse = ({
+    dice,
+    diceUsed,
+    onPress,
+    waitingForRoll,
+    rankIcon,
+    disabled,
+    timerProps
+}: {
+    dice: number[],
+    diceUsed: boolean[],
+    onPress: () => void,
+    waitingForRoll: boolean,
+    rankIcon: string,
+    disabled?: boolean,
+    timerProps?: {
+        isActive: boolean;
+        turnStartTime?: number;
+        turnDuration?: number;
+        yellowAt?: number;
+        redAt?: number;
+        serverTimeOffset?: number;
+    }
+}) => (
+    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+        {timerProps && <LudoTimerRing {...timerProps} size={90} strokeWidth={3} />}
+        <TouchableOpacity
+            style={styles.diceHouse}
+            onPress={onPress}
+            disabled={disabled || !waitingForRoll}
+            activeOpacity={0.8}
+        >
+            <View style={styles.diceRow}>
+                {dice?.length > 0 ? (
+                    (dice || []).map((d, i) => (
+                        <Ludo3DDie
+                            key={i}
+                            value={d}
+                            size={35}
+                            isUsed={diceUsed[i]}
+                        />
+                    ))
+                ) : (
+                    <View style={{ width: 35, height: 35 }} />
+                )}
             </View>
-        )}
-    </TouchableOpacity>
+
+            {waitingForRoll && (
+                <View style={styles.diceOverlay}>
+                    <Text style={styles.rankIconOverlay}>{rankIcon}</Text>
+                </View>
+            )}
+        </TouchableOpacity>
+    </View>
 );
 
 type LudoGameProps = {
@@ -100,6 +127,13 @@ type LudoGameProps = {
     onRoll?: (state: LudoGameState) => void;
     onPassTurn?: () => void;
     level?: any;
+    timerSync?: {
+        turnStartTime?: number;
+        turnDuration?: number;
+        yellowAt?: number;
+        redAt?: number;
+        serverTimeOffset?: number;
+    };
 };
 
 export const LudoCoreUI: React.FC<LudoGameProps> = ({
@@ -112,6 +146,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     onRoll,
     onPassTurn,
     level,
+    timerSync,
 }) => {
     const navigation = useNavigation();
     const [internalGameState, setInternalGameState] = useState<LudoGameState>(
@@ -340,6 +375,10 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                         onPress={handleRollDice}
                         rankIcon={gameState.currentPlayerIndex === 0 ? playerRank.icon : opponentRank.icon}
                         disabled={gameState.currentPlayerIndex !== 0}
+                        timerProps={timerSync ? {
+                            isActive: true,
+                            ...timerSync
+                        } : undefined}
                     />
                 </View>
             )}
