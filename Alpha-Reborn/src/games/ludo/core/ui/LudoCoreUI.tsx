@@ -85,8 +85,8 @@ const DiceHouse = ({
         serverTimeOffset?: number;
     }
 }) => (
-    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-        {timerProps && <LudoTimerRing {...timerProps} size={90} strokeWidth={3} />}
+    <View style={{ width: 100, height: 100, alignItems: 'center', justifyContent: 'center' }}>
+        {timerProps && <LudoTimerRing {...timerProps} size={96} strokeWidth={4} />}
         <TouchableOpacity
             style={styles.diceHouse}
             onPress={onPress}

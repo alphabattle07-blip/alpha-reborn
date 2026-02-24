@@ -90,6 +90,8 @@ const LudoOnline = () => {
             socketService.register(userProfile.id);
             // 1. Join the game room
             socketService.joinGame(currentGame.id);
+            // 1.1 Trigger recovery for initial state/timer sync
+            socketService.recoverLudoGame(currentGame.id);
 
             // 2. Listen for game state updates
             const unsubscribe = socketService.onGameStateUpdate((newState: any) => {
@@ -113,8 +115,7 @@ const LudoOnline = () => {
             });
 
             // 3. Listen for turn starts (Timer Sync)
-            const socket = socketService.getSocket();
-            socket.on('turnStarted', (data: any) => {
+            const unsubscribeTurn = socketService.onTurnStarted((data: any) => {
                 console.log("[LudoOnline] Turn Started Event:", data);
                 setTimerSync({
                     turnStartTime: data.turnStartTime || (data.serverTime - (data.timeLimit - (data.remainingTime || data.timeLimit))),
@@ -127,11 +128,11 @@ const LudoOnline = () => {
 
             return () => {
                 unsubscribe();
-                socket.off('turnStarted');
+                unsubscribeTurn();
                 socketService.leaveGame(currentGame.id);
             };
         }
-    }, [currentGame?.id]);
+    }, [currentGame?.id, userProfile?.id]);
 
     // --- Matchmaking Handlers ---
     const startAutomaticMatchmaking = async () => {
@@ -250,8 +251,11 @@ const LudoOnline = () => {
             return;
         }
 
-        // --- Optimistic Update ---
-        // We could optimistically start a rolling animation, but for now we wait for server to resolve the dice
+        // protection against fast taps / double rolls
+        if (Date.now() - lastActionTimeRef.current < 1000) {
+            console.log("[LudoOnline] Action ignored: Too fast / duplicate roll");
+            return;
+        }
         lastActionTimeRef.current = Date.now();
 
         try {

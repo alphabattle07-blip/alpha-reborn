@@ -40,6 +40,7 @@ export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
 
         setOpacity(1);
 
+        console.log("[LudoTimerRing] Active:", { isActive, turnStartTime, turnDuration, yellowAt, redAt });
         intervalRef.current = setInterval(() => {
             const currentServerTime = Date.now() - serverTimeOffset;
             const elapsed = currentServerTime - turnStartTime;
@@ -57,7 +58,7 @@ export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
             } else {
                 setCurrentColor('#34C759'); // Green
             }
-        }, 300);
+        }, 1000); // Check every second
 
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
@@ -68,6 +69,7 @@ export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
 
     return (
         <View
+            pointerEvents="none"
             style={[
                 styles.container,
                 {
@@ -88,6 +90,5 @@ const styles = StyleSheet.create({
         position: 'absolute',
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: -1, // Behind the dice house content
     },
 });

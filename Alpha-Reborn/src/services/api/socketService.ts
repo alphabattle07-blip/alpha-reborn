@@ -52,6 +52,21 @@ class SocketService {
             const serverTime = payload?.serverTime;
             this.emitLocal('gameStateUpdate', board, serverTime);
         });
+
+        this.socket.on('turnStarted', (data: any) => {
+            this.emitLocal('turnStarted', data);
+        });
+    }
+
+    getSocket() {
+        return this.socket;
+    }
+
+    recoverLudoGame(gameId: string) {
+        if (this.socket?.connected) {
+            console.log('[SocketService] Emitting recoverLudoGame:', gameId);
+            this.socket.emit('recoverLudoGame', gameId);
+        }
     }
 
     joinGame(gameId: string) {
@@ -143,6 +158,10 @@ class SocketService {
 
     onGameStateUpdate(callback: (board: any, serverTime?: number) => void) {
         return this.on('gameStateUpdate', callback);
+    }
+
+    onTurnStarted(callback: (data: any) => void) {
+        return this.on('turnStarted', callback);
     }
 
     private on(event: string, callback: Function) {
