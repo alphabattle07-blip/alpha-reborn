@@ -83,21 +83,8 @@ const LudoOnline = () => {
             // 1. Join the game room
             socketService.joinGame(currentGame.id);
 
-            // 2. Listen for opponent moves
-            const unsubscribe = socketService.onOpponentMove((newState: LudoGameState) => {
-                // console.log("[LudoOnline] ⚡ Socket update received");
-
-                // Only process if it's NOT our action (redundant safety)
-                // Actually, the server broadcasts to others, so we shouldn't receive our own moves usually,
-                // unless we join with multiple sockets or server logic changes.
-                // We'll trust the swap logic in useMemo to handle the perspective.
-
-                // Update local store immediately
-                // We need to dispatch updateOnlineGameState or just update slice?
-                // updateOnlineGameState works, but it might be heavy if it triggers another fetch.
-                // Ideally, we just update the simple store.
-
-                // For now, let's treat it as a "fetch success"
+            // 2. Listen for server state updates
+            const unsubscribe = socketService.onGameStateUpdate((newState: LudoGameState) => {
                 dispatch(setCurrentGame({
                     ...currentGame,
                     board: newState
@@ -215,28 +202,13 @@ const LudoOnline = () => {
         return processedState;
     }, [currentGame, isPlayer2]);
 
-    const handleOnlineAction = async (newState: LudoGameState) => {
-        if (!currentGame || !userProfile || !visualGameState) return;
+    const handleOnlineAction = async (newState: LudoGameState, intent?: any) => {
+        if (!currentGame || !userProfile || !visualGameState || !intent) return;
 
-        // Strict Turn Validation: Only the player whose turn it is should update the server.
-        // visualGameState.currentPlayerIndex 0 is always the local player.
+        // Strict Turn Validation
         if (visualGameState.currentPlayerIndex !== 0) {
             console.log("[LudoOnline] Action ignored: Not your turn to update server");
             return;
-        }
-
-        // Transform back to logical state before sending to server
-        let logicalState = newState;
-        if (isPlayer2) {
-            const swappedPlayers = [
-                { ...newState.players[1], id: 'p1' },
-                { ...newState.players[0], id: 'p2' }
-            ];
-            logicalState = {
-                ...newState,
-                players: swappedPlayers,
-                currentPlayerIndex: newState.currentPlayerIndex === 1 ? 0 : 1,
-            };
         }
 
         // --- Optimistic Update ---
@@ -244,27 +216,14 @@ const LudoOnline = () => {
         lastActionTimeRef.current = Date.now();
 
         try {
-            // Determine the current turn ID based on the updated logical state
-            const nextTurnId = logicalState.currentPlayerIndex === 0
-                ? currentGame.player1.id
-                : (currentGame.player2?.id || '');
+            // Attach state version for optimistic UI sync
+            intent.stateVersion = visualGameState.stateVersion || 1;
 
-            await dispatch(updateOnlineGameState({
-                gameId: currentGame.id,
-                updates: {
-                    board: logicalState as any,
-                    currentTurn: nextTurnId || undefined,
-                    winnerId: newState.winner === 'p1' ? userProfile.id : (newState.winner === 'p2' ? (isPlayer1 ? currentGame.player2?.id : currentGame.player1?.id) : undefined),
-                    status: newState.winner ? 'COMPLETED' : 'IN_PROGRESS'
-                }
-            })).unwrap();
-
-            // --- Socket Emit ---
-            // Broadcast the move to the opponent instantly
-            socketService.emitMove(currentGame.id, logicalState);
+            // --- Socket Emit (Intent Only) ---
+            socketService.emitMove(currentGame.id, intent, 'ludo');
 
         } catch (error) {
-            console.error("Failed to update server", error);
+            console.error("Failed to emit intent", error);
         }
     };
 

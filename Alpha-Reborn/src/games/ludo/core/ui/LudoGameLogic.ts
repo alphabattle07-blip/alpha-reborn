@@ -25,6 +25,7 @@ export interface LudoGameState {
     winner: string | null;
     log: string[];
     level: number;
+    stateVersion?: number;
 }
 
 const HOUSE_POS = -1;

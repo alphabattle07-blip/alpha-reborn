@@ -91,13 +91,13 @@ class SocketService {
         }
     }
 
-    emitMove(gameId: string, move: any) {
+    emitMove(gameId: string, move: any, gameType: string = 'whot') {
         if (!this.socket?.connected) {
             console.warn('[SocketService] Cannot emit move, socket disconnected');
             return;
         }
 
-        // Map frontend action types to backend engine types
+        // Map frontend action types to backend engine types for Whot
         let backendMove: any = { ...move };
         if (move.type === 'CARD_PLAYED') {
             backendMove.type = 'PLAY_CARD';
@@ -107,10 +107,9 @@ class SocketService {
             backendMove.type = 'DRAW';
         }
 
-        console.log('[SocketService] Emitting gameAction:', backendMove.type, 'for game:', gameId);
         this.socket.emit('gameAction', {
             gameId,
-            gameType: 'whot',
+            gameType,
             data: backendMove
         });
     }
