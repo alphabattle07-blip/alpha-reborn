@@ -39,7 +39,7 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
     // --- Animation State ---
     // internalValue controls the visual number shown during the rolling animation
     const [internalValue, setInternalValue] = useState(value);
-    
+
     // Shared values for physics
     const bounce = useSharedValue(0);
     const rotation = useSharedValue(0);
@@ -62,7 +62,7 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
 
         // --- Start Animation Sequence ---
         // (Only runs for valid, unused, new rolls)
-        
+
         // 1. Reset Physics
         bounce.value = 0;
         rotation.value = 0;
@@ -71,7 +71,7 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
         const TOTAL_DURATION = 1000; // 1 second total roll time
 
         // 2. Physics Animation (Reanimated)
-        
+
         // Bounce: Hop Up High -> Drop -> Settle Bounce
         bounce.value = withSequence(
             withTiming(-size * 0.8, { duration: TOTAL_DURATION * 0.3, easing: Easing.out(Easing.quad) }),
@@ -83,9 +83,9 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
         );
 
         // Rotation: Spin 360 degrees (2 PI)
-        rotation.value = withTiming(Math.PI * 2, { 
-            duration: TOTAL_DURATION * 0.8, 
-            easing: Easing.out(Easing.cubic) 
+        rotation.value = withTiming(Math.PI * 2, {
+            duration: TOTAL_DURATION * 0.8,
+            easing: Easing.out(Easing.cubic)
         });
 
         // Scale: Slight breath
@@ -149,7 +149,7 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
         const add = (cx: number, cy: number) => positions.push({ cx, cy });
 
         // Use internalValue for display, default to 1 if something goes wrong
-        const val = internalValue > 0 ? internalValue : 1; 
+        const val = internalValue > 0 ? internalValue : 1;
 
         switch (val) {
             case 1:
@@ -188,12 +188,12 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
         <View style={[{ width: size, height: size }, style]}>
             <Canvas style={{ flex: 1 }}>
                 {/* Static Shadow (stays on ground) */}
-                <RoundedRect 
-                    x={2} 
-                    y={3} 
-                    width={size - 4} 
-                    height={size - 4} 
-                    r={r} 
+                <RoundedRect
+                    x={2}
+                    y={3}
+                    width={size - 4}
+                    height={size - 4}
+                    r={r}
                     color="rgba(0,0,0,0.2)"
                 >
                     <Shadow dx={0} dy={2} blur={4} color="rgba(0,0,0,0.3)" />

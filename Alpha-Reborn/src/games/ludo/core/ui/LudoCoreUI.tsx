@@ -96,8 +96,8 @@ type LudoGameProps = {
     opponent?: { name: string; country?: string; rating?: number; isAI?: boolean; avatar?: string | null };
     onGameStatsUpdate?: (result: "win" | "loss" | "draw", newRating: number) => void;
     onGameOver?: (winnerId: string) => void;
-    onMove?: (state: LudoGameState, intent?: any) => void;
-    onRoll?: (state: LudoGameState, intent?: any) => void;
+    onMove?: (state: LudoGameState) => void;
+    onRoll?: (state: LudoGameState) => void;
     level?: any;
 };
 
@@ -184,7 +184,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
         const newState = rollDice(gameState);
         console.log("[LudoCoreUI] Dice rolled:", newState.dice);
         setGameState(newState);
-        if (onRoll) onRoll(newState, { action: 'ROLL' });
+        if (onRoll) onRoll(newState);
     }, [gameState, onRoll, onMove]);
 
     // --- Auto Pass & Turn Logic ---
@@ -252,7 +252,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                 if (matchingMove) {
                     const newState = applyMove(gameState, matchingMove);
                     setGameState(newState);
-                    if (onMove) onMove(newState, { action: 'MOVE', seedIndex: tappedSeed.seedIndex });
+                    if (onMove) onMove(newState);
                 }
             }
         }
