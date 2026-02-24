@@ -19,6 +19,7 @@ interface GameOverModalProps {
   opponentName: string;
   playerRating: number;
   result: 'win' | 'loss' | 'draw';
+  isOnline?: boolean;
   children?: React.ReactNode;
   onStatsUpdate?: (result: 'win' | 'loss' | 'draw', newRating: number) => void;
 }
@@ -33,6 +34,7 @@ const GameOverModal = ({
   opponentName,
   playerRating,
   result,
+  isOnline,
   children,
   onStatsUpdate,
 }: GameOverModalProps) => {
@@ -47,17 +49,33 @@ const GameOverModal = ({
     levelReward: number;
     finalRating: number;
     bonus: number;
+    isOnline?: boolean;
   } | null>(null);
+
+  const ONLINE_BATTLE_BONUS = 25;
+  const ONLINE_WIN_PRIZE = 50;
+  const ONLINE_LOSS_PENALTY = 50;
+  const OFFLINE_BATTLE_BONUS = 15;
 
   useEffect(() => {
     if (visible && winner && !calculatedData) {
       let reward = 0;
       let totalChange = 0;
+      let bonus = 0;
 
-      if (isWin && level) {
-        const levelData = levels.find((l) => l.value === level);
-        reward = levelData?.reward ?? 0;
-        totalChange = reward + BATTLE_BONUS;
+      if (isOnline) {
+        bonus = ONLINE_BATTLE_BONUS;
+        if (isWin) reward = ONLINE_WIN_PRIZE;
+        else if (isLoss) reward = -ONLINE_LOSS_PENALTY;
+        else if (isDraw) reward = 0;
+        totalChange = bonus + reward;
+      } else {
+        bonus = isWin ? OFFLINE_BATTLE_BONUS : 0;
+        if (isWin && level) {
+          const levelData = levels.find((l) => l.value === level);
+          reward = levelData?.reward ?? 0;
+          totalChange = reward + bonus;
+        }
       }
 
       const finalRating = playerRating + totalChange;
@@ -65,10 +83,12 @@ const GameOverModal = ({
       setCalculatedData({
         levelReward: reward,
         finalRating: finalRating,
-        bonus: isWin ? BATTLE_BONUS : 0,
+        bonus: bonus,
+        isOnline: isOnline
       });
 
-      if (isWin) {
+      // Only auto-update stats if NOT online (online is server-authoritative)
+      if (!isOnline && isWin) {
         dispatch(
           updateGameStatsThunk({
             gameId: 'whot',
@@ -80,7 +100,7 @@ const GameOverModal = ({
 
       onStatsUpdate?.(result, finalRating);
     }
-  }, [visible, winner, isWin, level, playerRating, result, dispatch, onStatsUpdate, calculatedData]);
+  }, [visible, winner, isWin, isLoss, isDraw, level, playerRating, result, dispatch, onStatsUpdate, calculatedData, isOnline]);
 
   useEffect(() => {
     if (!visible) {
@@ -132,30 +152,28 @@ const GameOverModal = ({
           </Text>
 
           {/* 4. Rewards Section */}
-          {(isWin || isDraw) && (
+          {(isWin || isDraw || isOnline) && (
             <View style={styles.rewardSection}>
               <View style={styles.rewardRow}>
                 <Text style={styles.rewardLabel}>Battle Bonus</Text>
                 <Text style={styles.rewardValue}>
                   <Ionicons name="diamond" size={16} color="#FFD700" /> +
-                  {bonus} R-coin
+                  {bonus} R-Coin
                 </Text>
               </View>
 
-              {isWin && (
-                <View style={styles.rewardRow}>
-                  <Text style={styles.rewardLabel}>Level Reward</Text>
-                  <Text style={styles.rewardValue}>
-                    <Ionicons name="diamond" size={16} color="#FFD700" /> +
-                    {levelReward} R-coin
-                  </Text>
-                </View>
-              )}
+              <View style={styles.rewardRow}>
+                <Text style={styles.rewardLabel}>{isOnline ? 'Match Reward' : 'Level Reward'}</Text>
+                <Text style={[styles.rewardValue, isOnline && isLoss && { color: '#ef5350' }]}>
+                  <Ionicons name="diamond" size={16} color="#FFD700" /> {levelReward >= 0 ? '+' : ''}
+                  {levelReward} R-Coin
+                </Text>
+              </View>
 
               <View style={styles.rewardRow}>
                 <Text style={styles.rewardLabel}>Rapid Rating</Text>
                 <Text style={[styles.rewardValue, styles.totalRewardValue]}>
-                  <Ionicons name="diamond" size={16} color="#FFD700" /> {finalRating}
+                  <Ionicons name="diamond" size={16} color="#FFD700" /> {playerRating} {bonus + levelReward >= 0 ? '+' : ''} {bonus + levelReward} = {finalRating}
                 </Text>
               </View>
             </View>

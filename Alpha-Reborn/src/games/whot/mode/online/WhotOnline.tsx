@@ -944,7 +944,8 @@ const WhotOnlineUI = () => {
         playerName: userProfile?.name || 'You',
         opponentName: opponent?.name || 'Opponent',
         playerRating: userProfile?.rating || 1200,
-        result: visualGameState.winner.id === userProfile?.id ? 'win' : 'loss'
+        result: visualGameState.winner.id === userProfile?.id ? 'win' : 'loss',
+        isOnline: true
       } : null}
     />
   );

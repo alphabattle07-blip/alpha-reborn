@@ -361,6 +361,7 @@ const LudoOnline = () => {
                         playerName={userProfile?.name || "You"}
                         opponentName={opponent.name}
                         playerRating={userProfile?.rating || 1200}
+                        isOnline={true}
                     />
                 )}
             </View>

@@ -18,6 +18,7 @@ const BATTLE_BONUS = 15;
 interface LudoGameOverProps {
     result: 'win' | 'loss';
     level?: number;
+    isOnline?: boolean;
     onRematch?: () => void;
     onNewBattle?: () => void;
     playerName: string;
@@ -25,6 +26,11 @@ interface LudoGameOverProps {
     playerRating: number;
     onStatsUpdate?: (result: 'win' | 'loss' | 'draw', newRating: number) => void;
 }
+
+const ONLINE_BATTLE_BONUS = 25;
+const ONLINE_WIN_PRIZE = 50;
+const ONLINE_LOSS_PENALTY = 50;
+const OFFLINE_BATTLE_BONUS = 15;
 
 const LudoGameOver: React.FC<LudoGameOverProps> = ({
     result,
@@ -34,6 +40,7 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
     playerName,
     opponentName,
     playerRating,
+    isOnline,
     onStatsUpdate,
 }) => {
     const dispatch = useAppDispatch();
@@ -51,11 +58,19 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
         if (result && !calculatedData) {
             let reward = 0;
             let totalChange = 0;
+            let bonus = 0;
 
-            if (isWin && level) {
-                const levelData = levels.find((l) => l.value === level);
-                reward = levelData?.reward ?? 0;
-                totalChange = reward + BATTLE_BONUS;
+            if (isOnline) {
+                bonus = ONLINE_BATTLE_BONUS;
+                reward = isWin ? ONLINE_WIN_PRIZE : -ONLINE_LOSS_PENALTY;
+                totalChange = bonus + reward;
+            } else {
+                bonus = isWin ? OFFLINE_BATTLE_BONUS : 0;
+                if (isWin && level) {
+                    const levelData = levels.find((l) => l.value === level);
+                    reward = levelData?.reward ?? 0;
+                    totalChange = reward + bonus;
+                }
             }
 
             const finalRating = playerRating + totalChange;
@@ -63,30 +78,33 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
             setCalculatedData({
                 levelReward: reward,
                 finalRating: finalRating,
-                bonus: isWin ? BATTLE_BONUS : 0,
+                bonus: bonus,
             });
 
-            if (isWin) {
-                dispatch(
-                    updateGameStatsThunk({
-                        gameId: 'ludo',
-                        result: 'win',
-                        newRating: finalRating,
-                    })
-                );
-            } else if (isLoss) {
-                dispatch(
-                    updateGameStatsThunk({
-                        gameId: 'ludo',
-                        result: 'loss',
-                        newRating: playerRating,
-                    })
-                );
+            // Only auto-update stats if NOT online (online is server-authoritative)
+            if (!isOnline) {
+                if (isWin) {
+                    dispatch(
+                        updateGameStatsThunk({
+                            gameId: 'ludo',
+                            result: 'win',
+                            newRating: finalRating,
+                        })
+                    );
+                } else if (isLoss) {
+                    dispatch(
+                        updateGameStatsThunk({
+                            gameId: 'ludo',
+                            result: 'loss',
+                            newRating: playerRating,
+                        })
+                    );
+                }
             }
 
             onStatsUpdate?.(result, finalRating);
         }
-    }, [result, isWin, isLoss, level, playerRating, dispatch, onStatsUpdate, calculatedData]);
+    }, [result, isWin, isLoss, level, playerRating, dispatch, onStatsUpdate, calculatedData, isOnline]);
 
     const displayLevelReward = calculatedData?.levelReward ?? 0;
     const displayNewRating = calculatedData?.finalRating ?? playerRating;
@@ -102,28 +120,28 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
                     Winner: {isWin ? playerName : opponentName}
                 </Text>
 
-                {isWin && (
+                {(isWin || isOnline) && (
                     <View style={styles.rewardSection}>
                         <View style={styles.rewardRow}>
                             <Text style={styles.rewardLabel}>Battle Bonus</Text>
                             <Text style={styles.rewardValue}>
                                 <Ionicons name="trophy" size={16} color="#FFD700" /> +
-                                {displayBonus} R-coin
+                                {displayBonus} R-Coin
                             </Text>
                         </View>
 
                         <View style={styles.rewardRow}>
-                            <Text style={styles.rewardLabel}>Level Reward</Text>
-                            <Text style={styles.rewardValue}>
-                                <Ionicons name="trophy" size={16} color="#FFD700" /> +
-                                {displayLevelReward} R-coin
+                            <Text style={styles.rewardLabel}>{isOnline ? 'Match Reward' : 'Level Reward'}</Text>
+                            <Text style={[styles.rewardValue, isOnline && !isWin && { color: '#ef5350' }]}>
+                                <Ionicons name="trophy" size={16} color="#FFD700" /> {displayLevelReward >= 0 ? '+' : ''}
+                                {displayLevelReward} R-Coin
                             </Text>
                         </View>
 
                         <View style={styles.rewardRow}>
                             <Text style={styles.rewardLabel}>Rapid Rating</Text>
                             <Text style={[styles.rewardValue, styles.totalRewardValue]}>
-                                <Ionicons name="medal" size={16} color="#FFD700" /> {displayNewRating}
+                                <Ionicons name="medal" size={16} color="#FFD700" /> {playerRating} {displayBonus + displayLevelReward >= 0 ? '+' : ''}{displayBonus + displayLevelReward} = {displayNewRating}
                             </Text>
                         </View>
                     </View>
