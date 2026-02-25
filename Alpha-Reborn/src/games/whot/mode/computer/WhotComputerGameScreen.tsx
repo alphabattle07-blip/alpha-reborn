@@ -174,21 +174,28 @@ const WhotComputerUI = () => {
     if (!game) {
       return {
         name: "Computer",
+        rating: 1200, // Default fallback
         handLength: 0,
         isCurrentPlayer: false,
+        isAI: true,
       };
     }
     const computerPlayer = game.gameState.players[1];
     const isComputerTurn = game.gameState.currentPlayer === 1;
+    const levelInfo = levels.find((l) => l.value === computerLevel);
+
     return {
       name: computerPlayer.name,
+      rating: levelInfo ? levelInfo.rating : 1200,
       handLength: computerPlayer.hand.length,
       isCurrentPlayer: isComputerTurn,
+      isAI: true,
     };
   }, [
     game?.gameState.players[1]?.name,
     game?.gameState.players[1]?.hand.length,
     game?.gameState.currentPlayer,
+    computerLevel,
   ]);
 
   const playerState = useMemo(() => {
@@ -1201,6 +1208,7 @@ const WhotComputerUI = () => {
   return (
     <WhotCoreUI
       game={game}
+      level={computerLevel}
       playerState={playerState}
       opponentState={computerState}
       marketCardCount={marketCardCount}

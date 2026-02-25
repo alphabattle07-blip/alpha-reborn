@@ -72,7 +72,7 @@ export default memo(ComputerUI);
 
 const styles = StyleSheet.create({
   container: {
-    marginRight: "69%",
+    marginRight: "10%",
     top: -10,
   },
   containerLandscape: {
