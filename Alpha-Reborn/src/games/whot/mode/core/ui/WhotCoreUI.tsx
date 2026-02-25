@@ -362,8 +362,8 @@ const styles = StyleSheet.create({
     loadingTitle: { color: '#FFD700', fontSize: 18, marginTop: 10 },
     computerUIContainer: {
         position: "absolute",
-        top: 50,
-        left: 20,
+        top: 10,
+        left: 5,
         alignSelf: "flex-start",
         zIndex: 10,
     },
