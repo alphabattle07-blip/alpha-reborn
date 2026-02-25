@@ -90,12 +90,12 @@ const GameOverModal = ({
           isOnline: isOnline
         });
 
-        // Only auto-update stats if NOT online (online is server-authoritative)
-        if (!isOnline && isWin) {
+        // Dispatch to backend to save the new calculated ratings.
+        if (isWin || isLoss || isDraw) {
           dispatch(
             updateGameStatsThunk({
               gameId: 'whot',
-              result: 'win',
+              result: result, // 'win' | 'loss' | 'draw'
               newRating: finalRating,
             })
           );

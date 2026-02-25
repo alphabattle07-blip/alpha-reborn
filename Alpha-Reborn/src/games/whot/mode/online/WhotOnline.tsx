@@ -70,6 +70,30 @@ const WhotOnlineUI = () => {
   const { toast } = useToast();
   const isLandscape = width > height;
 
+  // --- WHOT-SPECIFIC RATING RESOLUTION ---
+  const { gameStats: reduxGameStats } = useAppSelector((state) => state.gameStats);
+  const gameStatsArray = Object.values(reduxGameStats);
+
+  const getPlayerGameRating = (profile: any) => {
+    if (!profile) return 1000;
+
+    // 1. Try Redux Slice (if this is the logged-in user)
+    const existingStat = profile.id === userProfile?.id
+      ? gameStatsArray.find(stat => stat.gameId === 'whot')
+      : undefined;
+
+    if (existingStat) return existingStat.rating;
+
+    // 2. If missing, try Profile Embedded Stats
+    const profileEmbeddedStats = profile?.gameStats || [];
+    const embeddedStat = profileEmbeddedStats.find((s: any) => s.gameId === 'whot');
+
+    if (embeddedStat) return embeddedStat.rating;
+
+    // 3. Absolute Fallback
+    return profile?.rating ?? 1000;
+  };
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // --- FONTS ---
@@ -903,14 +927,14 @@ const WhotOnlineUI = () => {
       }}
       playerState={{
         name: userProfile?.name || 'You',
-        rating: userProfile?.rating || 1200,
+        rating: getPlayerGameRating(userProfile),
         handLength: displayedHand.length,
         isCurrentPlayer: visualGameState.currentPlayer === 0,
         avatar: userProfile?.avatar
       }}
       opponentState={{
         name: opponent?.name || 'Opponent',
-        rating: opponent?.rating || 1200,
+        rating: getPlayerGameRating(opponent),
         handLength: visualGameState.players?.[1]?.hand?.length || 0,
         isCurrentPlayer: visualGameState.currentPlayer === 1,
         isAI: false
@@ -950,7 +974,7 @@ const WhotOnlineUI = () => {
         level: 1 as any,
         playerName: userProfile?.name || 'You',
         opponentName: opponent?.name || 'Opponent',
-        playerRating: userProfile?.rating || 1200,
+        playerRating: getPlayerGameRating(userProfile),
         result: matchResult,
         isOnline: true
       } : null}

@@ -85,25 +85,15 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
                 isOnline: isOnline
             });
 
-            // Only auto-update stats if NOT online (online is server-authoritative)
-            if (!isOnline) {
-                if (isWin) {
-                    dispatch(
-                        updateGameStatsThunk({
-                            gameId: 'ludo',
-                            result: 'win',
-                            newRating: finalRating,
-                        })
-                    );
-                } else if (isLoss) {
-                    dispatch(
-                        updateGameStatsThunk({
-                            gameId: 'ludo',
-                            result: 'loss',
-                            newRating: playerRating,
-                        })
-                    );
-                }
+            // Dispatch to backend to save the new calculated ratings.
+            if (isWin || isLoss) {
+                dispatch(
+                    updateGameStatsThunk({
+                        gameId: 'ludo',
+                        result: isWin ? 'win' : 'loss',
+                        newRating: finalRating,
+                    })
+                );
             }
 
             onStatsUpdate?.(result, finalRating);

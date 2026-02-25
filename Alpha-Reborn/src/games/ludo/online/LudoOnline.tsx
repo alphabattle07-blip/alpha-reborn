@@ -26,6 +26,30 @@ const LudoOnline = () => {
     const { isAuthenticated, token } = useAppSelector(state => state.auth);
     const playerProfile = usePlayerProfile('ludo');
 
+    // --- LUDO-SPECIFIC RATING RESOLUTION ---
+    const { gameStats: reduxGameStats } = useAppSelector((state) => state.gameStats);
+    const gameStatsArray = Object.values(reduxGameStats);
+
+    const getPlayerGameRating = (profile: any) => {
+        if (!profile) return 1000;
+
+        // 1. Try Redux Slice (if this is the logged-in user)
+        const existingStat = profile.id === userProfile?.id
+            ? gameStatsArray.find(stat => stat.gameId === 'ludo')
+            : undefined;
+
+        if (existingStat) return existingStat.rating;
+
+        // 2. If missing, try Profile Embedded Stats
+        const profileEmbeddedStats = profile?.gameStats || [];
+        const embeddedStat = profileEmbeddedStats.find((s: any) => s.gameId === 'ludo');
+
+        if (embeddedStat) return embeddedStat.rating;
+
+        // 3. Absolute Fallback
+        return profile?.rating ?? 1000;
+    };
+
     // Matchmaking State
     const [isMatchmaking, setIsMatchmaking] = useState(false);
     const [matchmakingMessage, setMatchmakingMessage] = useState('Finding match...');
@@ -338,12 +362,12 @@ const LudoOnline = () => {
                     gameState={visualGameState}
                     player={{
                         name: userProfile?.name || "You",
-                        rating: userProfile?.rating || 1200,
+                        rating: getPlayerGameRating(userProfile),
                         avatar: userProfile?.avatar
                     }}
                     opponent={{
                         name: opponent.name,
-                        rating: opponent.rating,
+                        rating: getPlayerGameRating(opponent),
                     }}
                     onMove={handleMove}
                     onRoll={handleRoll}
@@ -360,7 +384,7 @@ const LudoOnline = () => {
                         onNewBattle={handleExit}
                         playerName={userProfile?.name || "You"}
                         opponentName={opponent.name}
-                        playerRating={userProfile?.rating || 1200}
+                        playerRating={getPlayerGameRating(userProfile)}
                         isOnline={true}
                     />
                 )}
