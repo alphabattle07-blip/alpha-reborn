@@ -58,47 +58,51 @@ const GameOverModal = ({
   const OFFLINE_BATTLE_BONUS = 15;
 
   useEffect(() => {
-    if (visible && winner && !calculatedData) {
-      let reward = 0;
-      let totalChange = 0;
-      let bonus = 0;
+    if (visible && winner) {
+      // Recalculate if we haven't calculated YET, OR if we calculated for the WRONG online state
+      if (!calculatedData || calculatedData.isOnline !== isOnline) {
+        let reward = 0;
+        let totalChange = 0;
+        let bonus = 0;
 
-      if (isOnline) {
-        bonus = ONLINE_BATTLE_BONUS;
-        if (isWin) reward = ONLINE_WIN_PRIZE;
-        else if (isLoss) reward = -ONLINE_LOSS_PENALTY;
-        else if (isDraw) reward = 0;
-        totalChange = bonus + reward;
-      } else {
-        bonus = isWin ? OFFLINE_BATTLE_BONUS : 0;
-        if (isWin && level) {
-          const levelData = levels.find((l) => l.value === level);
-          reward = levelData?.reward ?? 0;
-          totalChange = reward + bonus;
+        if (isOnline) {
+          // Enforce the new required numbers for online games
+          bonus = 25; // ONLINE_BATTLE_BONUS
+          if (isWin) reward = 50; // ONLINE_WIN_PRIZE
+          else if (isLoss) reward = -50; // ONLINE_LOSS_PENALTY
+          else if (isDraw) reward = 0;
+          totalChange = bonus + reward;
+        } else {
+          bonus = isWin ? 15 : 0; // OFFLINE_BATTLE_BONUS
+          if (isWin && level) {
+            const levelData = levels.find((l) => l.value === level);
+            reward = levelData?.reward ?? 0;
+            totalChange = reward + bonus;
+          }
         }
+
+        const finalRating = playerRating + totalChange;
+
+        setCalculatedData({
+          levelReward: reward,
+          finalRating: finalRating,
+          bonus: bonus,
+          isOnline: isOnline
+        });
+
+        // Only auto-update stats if NOT online (online is server-authoritative)
+        if (!isOnline && isWin) {
+          dispatch(
+            updateGameStatsThunk({
+              gameId: 'whot',
+              result: 'win',
+              newRating: finalRating,
+            })
+          );
+        }
+
+        onStatsUpdate?.(result, finalRating);
       }
-
-      const finalRating = playerRating + totalChange;
-
-      setCalculatedData({
-        levelReward: reward,
-        finalRating: finalRating,
-        bonus: bonus,
-        isOnline: isOnline
-      });
-
-      // Only auto-update stats if NOT online (online is server-authoritative)
-      if (!isOnline && isWin) {
-        dispatch(
-          updateGameStatsThunk({
-            gameId: 'whot',
-            result: 'win',
-            newRating: finalRating,
-          })
-        );
-      }
-
-      onStatsUpdate?.(result, finalRating);
     }
   }, [visible, winner, isWin, isLoss, isDraw, level, playerRating, result, dispatch, onStatsUpdate, calculatedData, isOnline]);
 
@@ -111,6 +115,13 @@ const GameOverModal = ({
   if (!visible || !winner || !calculatedData) return null;
 
   const { levelReward, finalRating, bonus } = calculatedData;
+
+  const getMatchRewardLabel = () => {
+    if (!isOnline) return 'Level Reward';
+    if (isWin) return 'Match Win';
+    if (isLoss) return 'Match Loss';
+    return 'Match Draw';
+  };
 
   return (
     <Animated.View
@@ -162,18 +173,20 @@ const GameOverModal = ({
                 </Text>
               </View>
 
-              <View style={styles.rewardRow}>
-                <Text style={styles.rewardLabel}>{isOnline ? 'Match Reward' : 'Level Reward'}</Text>
-                <Text style={[styles.rewardValue, isOnline && isLoss && { color: '#ef5350' }]}>
-                  <Ionicons name="diamond" size={16} color="#FFD700" /> {levelReward >= 0 ? '+' : ''}
-                  {levelReward} R-Coin
-                </Text>
-              </View>
+              {(!isOnline || isWin || isLoss) && (
+                <View style={styles.rewardRow}>
+                  <Text style={styles.rewardLabel}>{getMatchRewardLabel()}</Text>
+                  <Text style={[styles.rewardValue, isOnline && isLoss && { color: '#ef5350' }]}>
+                    <Ionicons name="diamond" size={16} color="#FFD700" /> {levelReward > 0 ? '+' : ''}
+                    {levelReward} R-Coin
+                  </Text>
+                </View>
+              )}
 
               <View style={styles.rewardRow}>
                 <Text style={styles.rewardLabel}>Rapid Rating</Text>
                 <Text style={[styles.rewardValue, styles.totalRewardValue]}>
-                  <Ionicons name="diamond" size={16} color="#FFD700" /> {playerRating} {bonus + levelReward >= 0 ? '+' : ''} {bonus + levelReward} = {finalRating}
+                  <Ionicons name="diamond" size={16} color="#FFD700" /> {playerRating} {bonus + levelReward >= 0 ? '+' : ''}{bonus + levelReward} = {finalRating}
                 </Text>
               </View>
             </View>

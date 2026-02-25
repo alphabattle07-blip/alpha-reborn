@@ -853,6 +853,12 @@ const WhotOnlineUI = () => {
     };
   }, [visualGameState, displayedHand, displayedOpponentHand]);
 
+  // --- WINNER MEMOIZATION ---
+  const isGameCompleted = currentGame?.status === 'COMPLETED' || !!visualGameState?.winner;
+  const actualWinnerId = visualGameState?.winner?.id || currentGame?.winnerId;
+  const matchResult = actualWinnerId === userProfile?.id ? 'win' : (actualWinnerId ? 'loss' : 'draw');
+  const parsedWinnerObj = useMemo(() => actualWinnerId ? { id: actualWinnerId } : null, [actualWinnerId]);
+
   // --- RENDER ---
   const areFontsReady = stableFont !== null && stableWhotFont !== null;
   if (!currentGame || !visualGameState || !areFontsReady || !assetsReady || !areCardsReadyToRender) {
@@ -888,6 +894,7 @@ const WhotOnlineUI = () => {
 
 
   const opponent = isPlayer2 ? currentGame.player1 : currentGame.player2;
+
   return (
     <WhotCoreUI
       game={{
@@ -936,15 +943,15 @@ const WhotOnlineUI = () => {
       stableFont={stableFont}
       stableWhotFont={stableWhotFont}
       isLandscape={isLandscape}
-      gameOver={visualGameState.winner ? {
-        winner: visualGameState.winner,
+      gameOver={isGameCompleted ? {
+        winner: parsedWinnerObj,
         onRematch: () => { },
         onNewBattle: handleExit,
         level: 1 as any,
         playerName: userProfile?.name || 'You',
         opponentName: opponent?.name || 'Opponent',
         playerRating: userProfile?.rating || 1200,
-        result: visualGameState.winner.id === userProfile?.id ? 'win' : 'loss',
+        result: matchResult,
         isOnline: true
       } : null}
     />

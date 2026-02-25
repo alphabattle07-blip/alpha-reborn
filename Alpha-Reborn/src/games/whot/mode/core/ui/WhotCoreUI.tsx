@@ -73,7 +73,8 @@ export type WhotCoreUIProps = {
         playerName: string;
         opponentName: string;
         playerRating: number;
-        result: 'win' | 'loss';
+        result: 'win' | 'loss' | 'draw';
+        isOnline?: boolean;
     } | null;
 };
 
@@ -348,6 +349,7 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                     opponentName={gameOver.opponentName}
                     playerRating={gameOver.playerRating}
                     result={gameOver.result}
+                    isOnline={gameOver.isOnline}
                 />
             )}
         </View>

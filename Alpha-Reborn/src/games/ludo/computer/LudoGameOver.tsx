@@ -52,20 +52,23 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
         levelReward: number;
         finalRating: number;
         bonus: number;
+        isOnline?: boolean;
     } | null>(null);
 
     useEffect(() => {
-        if (result && !calculatedData) {
+        // Recalculate if we haven't calculated YET, OR if we calculated for the WRONG online state
+        if (result && (!calculatedData || calculatedData.isOnline !== isOnline)) {
             let reward = 0;
             let totalChange = 0;
             let bonus = 0;
 
             if (isOnline) {
-                bonus = ONLINE_BATTLE_BONUS;
-                reward = isWin ? ONLINE_WIN_PRIZE : -ONLINE_LOSS_PENALTY;
+                // Enforce static rewards for online matches
+                bonus = 25; // ONLINE_BATTLE_BONUS
+                reward = isWin ? 50 : -50; // ONLINE_WIN_PRIZE / ONLINE_LOSS_PENALTY
                 totalChange = bonus + reward;
             } else {
-                bonus = isWin ? OFFLINE_BATTLE_BONUS : 0;
+                bonus = isWin ? 15 : 0; // OFFLINE_BATTLE_BONUS
                 if (isWin && level) {
                     const levelData = levels.find((l) => l.value === level);
                     reward = levelData?.reward ?? 0;
@@ -79,6 +82,7 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
                 levelReward: reward,
                 finalRating: finalRating,
                 bonus: bonus,
+                isOnline: isOnline
             });
 
             // Only auto-update stats if NOT online (online is server-authoritative)
@@ -110,6 +114,13 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
     const displayNewRating = calculatedData?.finalRating ?? playerRating;
     const displayBonus = calculatedData?.bonus ?? 0;
 
+    const getMatchRewardLabel = () => {
+        if (!isOnline) return 'Level Reward';
+        if (isWin) return 'Match Win';
+        if (isLoss) return 'Match Loss';
+        return 'Match Draw';
+    };
+
     return (
         <View style={styles.overlay}>
             <View style={styles.container}>
@@ -130,13 +141,15 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
                             </Text>
                         </View>
 
-                        <View style={styles.rewardRow}>
-                            <Text style={styles.rewardLabel}>{isOnline ? 'Match Reward' : 'Level Reward'}</Text>
-                            <Text style={[styles.rewardValue, isOnline && !isWin && { color: '#ef5350' }]}>
-                                <Ionicons name="trophy" size={16} color="#FFD700" /> {displayLevelReward >= 0 ? '+' : ''}
-                                {displayLevelReward} R-Coin
-                            </Text>
-                        </View>
+                        {(!isOnline || isWin || isLoss) && (
+                            <View style={styles.rewardRow}>
+                                <Text style={styles.rewardLabel}>{getMatchRewardLabel()}</Text>
+                                <Text style={[styles.rewardValue, isOnline && !isWin && { color: '#ef5350' }]}>
+                                    <Ionicons name="trophy" size={16} color="#FFD700" /> {displayLevelReward > 0 ? '+' : ''}
+                                    {displayLevelReward} R-Coin
+                                </Text>
+                            </View>
+                        )}
 
                         <View style={styles.rewardRow}>
                             <Text style={styles.rewardLabel}>Rapid Rating</Text>
