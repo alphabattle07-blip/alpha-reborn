@@ -363,7 +363,8 @@ const styles = StyleSheet.create({
     computerUIContainer: {
         position: "absolute",
         top: 50,
-        alignSelf: "center",
+        left: 20,
+        alignSelf: "flex-start",
         zIndex: 10,
     },
     playerUIContainer: {
