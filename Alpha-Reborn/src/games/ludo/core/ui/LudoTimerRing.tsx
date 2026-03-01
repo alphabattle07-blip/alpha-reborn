@@ -41,7 +41,7 @@ export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
         setOpacity(1);
 
         console.log("[LudoTimerRing] Active:", { isActive, turnStartTime, turnDuration, yellowAt, redAt });
-        intervalRef.current = setInterval(() => {
+        const checkColor = () => {
             const currentServerTime = Date.now() - serverTimeOffset;
             const elapsed = currentServerTime - turnStartTime;
 
@@ -58,7 +58,10 @@ export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
             } else {
                 setCurrentColor('#34C759'); // Green
             }
-        }, 1000); // Check every second
+        };
+
+        checkColor(); // initial check
+        intervalRef.current = setInterval(checkColor, 1000); // Check every second
 
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
@@ -92,3 +95,39 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
 });
+
+export const useLudoTimerColor = (props?: Omit<LudoTimerRingProps, 'size' | 'strokeWidth'>) => {
+    const [currentColor, setCurrentColor] = useState('rgba(255,255,255,0.2)');
+
+    useEffect(() => {
+        if (!props?.isActive || !props?.turnStartTime || !props?.turnDuration) {
+            setCurrentColor('rgba(255,255,255,0.2)');
+            return;
+        }
+
+        const checkColor = () => {
+            const currentServerTime = Date.now() - (props.serverTimeOffset || 0);
+            const elapsed = currentServerTime - props.turnStartTime!;
+
+            if (elapsed >= props.turnDuration!) {
+                setCurrentColor('#FF0000');
+                return;
+            }
+
+            if (props.redAt && props.redAt > 0 && currentServerTime >= props.redAt) {
+                setCurrentColor('#FF3B30');
+            } else if (props.yellowAt && props.yellowAt > 0 && currentServerTime >= props.yellowAt) {
+                setCurrentColor('#FFCC00');
+            } else {
+                setCurrentColor('#34C759');
+            }
+        };
+
+        checkColor();
+        const intervalId = setInterval(checkColor, 1000);
+
+        return () => clearInterval(intervalId);
+    }, [props?.isActive, props?.turnStartTime, props?.turnDuration, props?.yellowAt, props?.redAt, props?.serverTimeOffset]);
+
+    return currentColor;
+};

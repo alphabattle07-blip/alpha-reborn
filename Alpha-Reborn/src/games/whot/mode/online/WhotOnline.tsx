@@ -650,7 +650,8 @@ const WhotOnlineUI = () => {
       const dealer = cardListRef.current;
 
       // Whot card (number 20) → open suit selector, delay emit until suit is chosen
-      if (card.number === 20) {
+      // Bypass suit selector if it's the player's last card, as they've already won.
+      if (card.number === 20 && visualGameState.players[0].hand.length > 1) {
         pendingWhotCardId.current = card.id;
         setIsSuitSelectorOpen(true);
 

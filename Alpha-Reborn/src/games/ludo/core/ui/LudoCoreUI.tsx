@@ -15,7 +15,7 @@ import {
 import { getRankFromRating } from '../../../../utils/rank';
 import { getComputerMove } from "../../computer/LudoComputerLogic";
 import { Ludo3DDie } from "./Ludo3DDie";
-import { LudoTimerRing } from "./LudoTimerRing";
+import { useLudoTimerColor } from "./LudoTimerRing";
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#222" },
@@ -84,38 +84,45 @@ const DiceHouse = ({
         redAt?: number;
         serverTimeOffset?: number;
     }
-}) => (
-    <View style={{ width: 100, height: 100, alignItems: 'center', justifyContent: 'center' }}>
-        {timerProps && <LudoTimerRing {...timerProps} size={96} strokeWidth={4} />}
-        <TouchableOpacity
-            style={styles.diceHouse}
-            onPress={onPress}
-            disabled={disabled || !waitingForRoll}
-            activeOpacity={0.8}
-        >
-            <View style={styles.diceRow}>
-                {dice?.length > 0 ? (
-                    (dice || []).map((d, i) => (
-                        <Ludo3DDie
-                            key={i}
-                            value={d}
-                            size={35}
-                            isUsed={diceUsed[i]}
-                        />
-                    ))
-                ) : (
-                    <View style={{ width: 35, height: 35 }} />
-                )}
-            </View>
+}) => {
+    const timerBorderColor = useLudoTimerColor(timerProps);
+    const hasTimer = timerProps?.isActive;
 
-            {waitingForRoll && (
-                <View style={styles.diceOverlay}>
-                    <Text style={styles.rankIconOverlay}>{rankIcon}</Text>
+    return (
+        <View style={{ width: 100, height: 100, alignItems: 'center', justifyContent: 'center' }}>
+            <TouchableOpacity
+                style={[
+                    styles.diceHouse,
+                    hasTimer && { borderColor: timerBorderColor, borderWidth: 3 }
+                ]}
+                onPress={onPress}
+                disabled={disabled || !waitingForRoll}
+                activeOpacity={0.8}
+            >
+                <View style={styles.diceRow}>
+                    {dice?.length > 0 ? (
+                        (dice || []).map((d, i) => (
+                            <Ludo3DDie
+                                key={i}
+                                value={d}
+                                size={35}
+                                isUsed={diceUsed[i]}
+                            />
+                        ))
+                    ) : (
+                        <View style={{ width: 35, height: 35 }} />
+                    )}
                 </View>
-            )}
-        </TouchableOpacity>
-    </View>
-);
+
+                {waitingForRoll && (
+                    <View style={styles.diceOverlay}>
+                        <Text style={styles.rankIconOverlay}>{rankIcon}</Text>
+                    </View>
+                )}
+            </TouchableOpacity>
+        </View>
+    );
+};
 
 type LudoGameProps = {
     gameState?: LudoGameState;
