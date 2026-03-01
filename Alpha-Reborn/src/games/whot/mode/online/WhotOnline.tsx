@@ -886,31 +886,38 @@ const WhotOnlineUI = () => {
 
   // --- RENDER ---
   const areFontsReady = stableFont !== null && stableWhotFont !== null;
-  if (!currentGame || !visualGameState || !areFontsReady || !assetsReady || !areCardsReadyToRender) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color="#FFD700" />
-          <Text style={styles.loadingText}>Preparing Arena...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   if (isMatchmaking) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.matchmakingContainer}>
-          <ActivityIndicator size="large" color="#FFD700" />
-          <Text style={styles.matchmakingTitle}>{matchmakingMessage}</Text>
-          <TouchableOpacity style={styles.cancelButton} onPress={() => {
-            matchmakingService.cancelMatchmaking().catch(console.error);
-            if (matchmakingIntervalRef.current) clearInterval(matchmakingIntervalRef.current);
-            setIsMatchmaking(false);
-            navigation.goBack();
-          }}>
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
+          <View style={styles.matchmakingContent}>
+            <ActivityIndicator size="large" color="#FFD700" />
+            <Text style={styles.matchmakingTitle}>{matchmakingMessage}</Text>
+            <Text style={styles.matchmakingSub}>Pairing you with an opponent...</Text>
+            <TouchableOpacity style={styles.cancelMatchmakingButton} onPress={() => {
+              matchmakingService.cancelMatchmaking().catch(console.error);
+              if (matchmakingIntervalRef.current) clearInterval(matchmakingIntervalRef.current);
+              setIsMatchmaking(false);
+              navigation.goBack();
+            }}>
+              <Text style={styles.cancelMatchmakingText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!currentGame || !visualGameState || !areFontsReady || !assetsReady || !areCardsReadyToRender) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.matchmakingContainer}>
+          <View style={styles.matchmakingContent}>
+            <ActivityIndicator size="large" color="#FFD700" />
+            <Text style={styles.matchmakingTitle}>Preparing Arena...</Text>
+            <Text style={styles.matchmakingSub}>Connecting to Match...</Text>
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -988,7 +995,11 @@ const styles = StyleSheet.create({
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { color: '#FFD700', marginTop: 15 },
   matchmakingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  matchmakingContent: { alignItems: 'center', backgroundColor: '#2a2a2a', padding: 40, borderRadius: 20, width: '100%', maxWidth: 400 },
   matchmakingTitle: { color: 'white', fontSize: 24, fontWeight: 'bold', marginTop: 20, textAlign: 'center' },
+  matchmakingSub: { color: '#aaa', marginTop: 10, fontSize: 14, textAlign: 'center' },
+  cancelMatchmakingButton: { marginTop: 30, padding: 15, borderWidth: 1, borderColor: '#d32f2f', borderRadius: 8, width: '100%' },
+  cancelMatchmakingText: { color: '#ef5350', textAlign: 'center', fontSize: 16, fontWeight: '600' },
   cancelButton: { marginTop: 40, padding: 15, borderWidth: 1, borderColor: '#d32f2f', borderRadius: 8 },
   cancelText: { color: '#ef5350', fontSize: 16, fontWeight: '600' },
 });
