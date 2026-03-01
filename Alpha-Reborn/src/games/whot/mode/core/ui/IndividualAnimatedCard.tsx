@@ -405,6 +405,20 @@ const IndividualAnimatedCard = memo(
         />
       );
     }
-  )
+  ),
+  (prev, next) => {
+    // 1. Strict equality for the card ID (card contents like rotation/position 
+    // are completely animated via Reanimated, NO need for React to re-render!)
+    if (prev.card.id !== next.card.id) return false;
+
+    // 2. Structural/Visual requirements
+    if (prev.width !== next.width || prev.height !== next.height) return false;
+    if (prev.font !== next.font || prev.whotFont !== next.whotFont) return false;
+
+    // Everything else uses SharedValues or stable callbacks which are handled 
+    // correctly by Reanimated without needing React reconciliation.
+    // This prevents Skia canvas from flashing or unmounting.
+    return true;
+  }
 );
 export default IndividualAnimatedCard;
