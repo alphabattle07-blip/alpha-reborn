@@ -8,6 +8,12 @@ import LudoComputerGameScreen from "./computer/LudoComputerGameScreen"
 import LudoOnline from "./online/LudoOnline"
 import LudoBattleGroundUI from "./BattleGround/LudoBattleGroundUI"
 import { useToast } from "../../hooks/useToast"
+import { useBackgroundSound } from "../../hooks/useBackgroundSound";
+import bgTrack1 from "../../assets/sounds/backgroudsound/backgrounds1_short.mp3";
+import bgTrack2 from "../../assets/sounds/backgroudsound/backgrounds2_short.mp3";
+import bgTrack3 from "../../assets/sounds/backgroudsound/backgrounds3_short.mp3";
+
+const BG_TRACKS = [bgTrack1, bgTrack2, bgTrack3];
 
 type LudoIndexProps = {
   mode: "computer" | "online" | "battle";
@@ -15,6 +21,7 @@ type LudoIndexProps = {
 
 export default function LudoIndex({ mode }: LudoIndexProps) {
   const { toast } = useToast();
+  useBackgroundSound(BG_TRACKS);
   // Note: The 'game' state is no longer needed for the computer mode,
   // as ComputerGameScreen manages its own state.
   // You might still need it for other modes.

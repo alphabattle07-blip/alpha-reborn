@@ -22,7 +22,7 @@ import { useSound } from '../../../../hooks/useSound';
 import hopSound from '../../../../assets/sounds/hop.mp3';
 import captureSound from '../../../../assets/sounds/capture.mp3';
 import { useBackgroundSound } from "../../../../hooks/useBackgroundSound";
-import bgSound from "../../../../assets/sounds/backgrounds1_short.mp3";
+import bgSound from "../../../../assets/sounds/backgroudsound/backgrounds1_short.mp3";
 import { AYO_BOARD_CONFIG } from './ayoConfig';
 
 const boardImageSource = require('../../../../assets/images/ayo-board.png');
@@ -74,7 +74,7 @@ export const AyoSkiaImageBoard: React.FC<AyoSkiaImageBoardProps> = ({ board, boa
   const isAnimating = !!animatingPaths && animatingPaths.length > 0;
   const { play: playHop } = useSound(hopSound);
   const { play: playCapture } = useSound(captureSound);
-  useBackgroundSound(bgSound);
+  useBackgroundSound([bgSound]);
   const [animationBoard, setAnimationBoard] = useState<number[] | null>(null);
   const [animationSteps, setAnimationSteps] = useState<AnimationStep[]>([]);
   const animationTimers = useRef<any[]>([]);

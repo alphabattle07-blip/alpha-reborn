@@ -7,6 +7,12 @@ import WhotOnline from "./online/WhotOnline";
 import WhotBattleGroundUI from "./battleground/whotBattleGroundUI"
 
 import { useToast } from "../../../hooks/useToast";
+import { useBackgroundSound } from "../../../hooks/useBackgroundSound";
+import bgTrack1 from "../../../assets/sounds/backgroudsound/backgrounds1_short.mp3";
+import bgTrack2 from "../../../assets/sounds/backgroudsound/backgrounds2_short.mp3";
+import bgTrack3 from "../../../assets/sounds/backgroudsound/backgrounds3_short.mp3";
+
+const BG_TRACKS = [bgTrack1, bgTrack2, bgTrack3];
 
 type WhotIndexProps = {
   mode: "computer" | "online" | "battle";
@@ -14,6 +20,7 @@ type WhotIndexProps = {
 
 export default function WhotIndex({ mode }: WhotIndexProps) {
   const { toast } = useToast();
+  useBackgroundSound(BG_TRACKS);
   // Note: The 'game' state is no longer needed for the computer mode,
   // as WhotComputerGameScreen manages its own state.
   // You might still need it for other modes.

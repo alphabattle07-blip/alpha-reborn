@@ -10,20 +10,16 @@ import { Audio } from 'expo-av';
 export const WhotAssetManager = {
     // 1. Audio Assets
     sounds: {
-        pickTwo: require('../../../../../assets/sounds/pick_two.mp3'),
-        generalMarket: require('../../../../../assets/sounds/general_market.mp3'),
-        holdOn: require('../../../../../assets/sounds/hold_on.mp3'),
-        pickThree: require('../../../../../assets/sounds/pick_3.mp3'),
-        suspension: require('../../../../../assets/sounds/suspension.mp3'),
-        warning: require('../../../../../assets/sounds/warning.mp3'),
-        lastCard: require('../../../../../assets/sounds/last_card.mp3'),
-        victory: require('../../../../../assets/sounds/victory-chime-366449.mp3'),
-        whoosh: require('../../../../../assets/sounds/video-game-whoosh-sound-effect-320172.mp3'),
-        hop: require('../../../../../assets/sounds/hop.mp3'),
-        capture: require('../../../../../assets/sounds/capture.mp3'),
-        checkUp: require('../../../../../assets/sounds/check-up.mp3'),
-        defended: require('../../../../../assets/sounds/defended.mp3'),
-        request: require('../../../../../assets/sounds/i_request.mp3'),
+        pickTwo: require('../../../../../assets/sounds/whotVoicing/pick_two.mp3'),
+        generalMarket: require('../../../../../assets/sounds/whotVoicing/general_market.mp3'),
+        holdOn: require('../../../../../assets/sounds/whotVoicing/hold_on.mp3'),
+        pickThree: require('../../../../../assets/sounds/whotVoicing/pick_3.mp3'),
+        suspension: require('../../../../../assets/sounds/whotVoicing/suspension.mp3'),
+        warning: require('../../../../../assets/sounds/whotVoicing/warning.mp3'),
+        lastCard: require('../../../../../assets/sounds/whotVoicing/last_card.mp3'),
+        checkUp: require('../../../../../assets/sounds/whotVoicing/check-up.mp3'),
+        defended: require('../../../../../assets/sounds/whotVoicing/defended.mp3'),
+        request: require('../../../../../assets/sounds/whotVoicing/i_request.mp3'),
     },
 
     // 2. Preload Everything
