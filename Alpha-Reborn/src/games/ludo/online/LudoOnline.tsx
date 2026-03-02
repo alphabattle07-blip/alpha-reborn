@@ -61,6 +61,8 @@ const LudoOnline = () => {
     // Stores our local state after an action until the server confirms it
     const pendingStateRef = useRef<LudoGameState | null>(null);
     const lastActionTimeRef = useRef<number>(0);
+    // Guard: track if game-over has been processed to stop polling/socket updates
+    const gameOverProcessedRef = useRef(false);
     const [timerSync, setTimerSync] = useState<{
         turnStartTime?: number;
         turnDuration?: number;
@@ -98,10 +100,19 @@ const LudoOnline = () => {
         };
     }, []);
 
+    // --- Mark game as completed to stop polling/socket updates ---
+    useEffect(() => {
+        if (currentGame?.status === 'COMPLETED' && !gameOverProcessedRef.current) {
+            gameOverProcessedRef.current = true;
+        }
+    }, [currentGame?.status]);
+
     // Handle Game Polling
     useEffect(() => {
         if (currentGame?.id) {
             const interval = setInterval(() => {
+                // Stop polling once game is completed
+                if (currentGame.status === 'COMPLETED' || gameOverProcessedRef.current) return;
                 dispatch(fetchGameState(currentGame.id));
             }, 15000); // Reduce poll frequency to 15s (fallback only)
             return () => clearInterval(interval);
@@ -119,6 +130,8 @@ const LudoOnline = () => {
 
             // 2. Listen for game state updates
             const unsubscribe = socketService.onGameStateUpdate((newState: any) => {
+                // Ignore updates once game is completed
+                if (gameOverProcessedRef.current) return;
                 // Update local store immediately
                 dispatch(setCurrentGame({
                     ...currentGame,
@@ -322,7 +335,27 @@ const LudoOnline = () => {
 
     const handleExit = () => {
         dispatch(clearCurrentGame());
-        navigation.goBack();
+        (navigation as any).navigate('GameLobby', { gameId: 'ludo' });
+    };
+
+    const handleRematch = () => {
+        // Clear current game state
+        dispatch(clearCurrentGame());
+        // Reset matchmaking ref so it can restart
+        hasStartedMatchmaking.current = false;
+        // Reset pending state
+        pendingStateRef.current = null;
+        lastActionTimeRef.current = 0;
+        gameOverProcessedRef.current = false;
+        setTimerSync(null);
+        // Restart matchmaking — will show "Looking for Opponent" UI
+        hasStartedMatchmaking.current = true;
+        startAutomaticMatchmaking();
+    };
+
+    const handleNewBattle = () => {
+        dispatch(clearCurrentGame());
+        (navigation as any).navigate('GameLobby', { gameId: 'ludo' });
     };
 
     const renderLobbyMatchmaking = () => (
@@ -380,8 +413,8 @@ const LudoOnline = () => {
                     <LudoGameOver
                         result={currentGame.winnerId === userProfile?.id ? "win" : "loss"}
                         level={visualGameState.level}
-                        onRematch={() => handleExit()} // Rematch logic can be added later
-                        onNewBattle={handleExit}
+                        onRematch={handleRematch}
+                        onNewBattle={handleNewBattle}
                         playerName={userProfile?.name || "You"}
                         opponentName={opponent.name}
                         playerRating={getPlayerGameRating(userProfile)}

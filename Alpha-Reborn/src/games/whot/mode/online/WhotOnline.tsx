@@ -116,6 +116,8 @@ const WhotOnlineUI = () => {
   const [matchmakingMessage, setMatchmakingMessage] = useState('Finding match...');
   const matchmakingIntervalRef = useRef<any>(null);
   const hasStartedMatchmaking = useRef(false);
+  // Guard: track if game-over has been processed to stop polling/socket updates
+  const gameOverProcessedRef = useRef(false);
 
   // --- ANIMATION STATE ---
   // `isAnimating` React state drives UI lock (passed to WhotCoreUI).
@@ -200,12 +202,19 @@ const WhotOnlineUI = () => {
     };
   }, []);
 
+  // --- Mark game as completed to stop polling/socket updates ---
+  useEffect(() => {
+    if (currentGame?.status === 'COMPLETED' && !gameOverProcessedRef.current) {
+      gameOverProcessedRef.current = true;
+    }
+  }, [currentGame?.status]);
+
   // --- 3. POLLING FALLBACK ---
   useEffect(() => {
     if (currentGame?.id) {
       const interval = setInterval(() => {
-        // Skip polling while animations are running
-        if (animationLock.isAnimating) return;
+        // Skip polling while animations are running or game is completed
+        if (animationLock.isAnimating || gameOverProcessedRef.current) return;
         dispatch(fetchGameState(currentGame.id));
       }, 5000);
       return () => clearInterval(interval);
@@ -274,6 +283,8 @@ const WhotOnlineUI = () => {
 
       // ─── GAME STATE UPDATE → DEFER IF ANIMATING ───
       const unsubStateUpdate = socketService.onGameStateUpdate((board: any, serverTime?: number) => {
+        // Ignore updates once game is completed
+        if (gameOverProcessedRef.current) return;
         console.log("📡 [WhotOnline] Received gameStateUpdate, locked:", animationLock.isAnimating);
         if (!board) return;
 
@@ -862,7 +873,39 @@ const WhotOnlineUI = () => {
 
   const handleExit = () => {
     dispatch(clearCurrentGame());
-    navigation.navigate('GameHome' as never);
+    (navigation as any).navigate('GameLobby', { gameId: 'whot' });
+  };
+
+  const handleRematch = () => {
+    // Clear current game from Redux
+    dispatch(clearCurrentGame());
+    // Reset all animation/display state for a fresh session
+    animationQueue.clear();
+    setIsAnimating(false);
+    setHasDealt(false);
+    setDisplayedHand([]);
+    setDisplayedOpponentHand([]);
+    displayedHandRef.current = [];
+    displayedOpponentHandRef.current = [];
+    pendingDrawIdsRef.current = new Set();
+    pendingOpponentDrawIdsRef.current = new Set();
+    prevBoardStringRef.current = null;
+    stableBoardRef.current = null;
+    stableAllCardsRef.current = [];
+    pendingStateRef.current = null;
+    setLocalHandOrder([]);
+    setIsSuitSelectorOpen(false);
+    setAssetsReady(false);
+    setCardsReadyToRender(true);
+    // Reset matchmaking ref and restart matchmaking
+    hasStartedMatchmaking.current = true;
+    gameOverProcessedRef.current = false;
+    startAutomaticMatchmaking();
+  };
+
+  const handleNewBattle = () => {
+    dispatch(clearCurrentGame());
+    (navigation as any).navigate('GameLobby', { gameId: 'whot' });
   };
 
   // Build the visual game state for WhotCoreUI — override player hand with displayedHand
@@ -977,8 +1020,8 @@ const WhotOnlineUI = () => {
       isLandscape={isLandscape}
       gameOver={isGameCompleted ? {
         winner: parsedWinnerObj,
-        onRematch: () => { },
-        onNewBattle: handleExit,
+        onRematch: handleRematch,
+        onNewBattle: handleNewBattle,
         level: 1 as any,
         playerName: userProfile?.name || 'You',
         opponentName: opponent?.name || 'Opponent',

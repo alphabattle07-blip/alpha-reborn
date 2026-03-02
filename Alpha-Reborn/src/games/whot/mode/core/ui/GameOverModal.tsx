@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { View, StyleSheet, Text, TouchableOpacity, useWindowDimensions, ScrollView } from "react-native";
 import Animated, { FadeIn, BounceIn, FadeOut } from "react-native-reanimated";
 import { Player, WHOT_LEVELS as levels, ComputerLevel } from "../types";
@@ -52,6 +52,9 @@ const GameOverModal = ({
     isOnline?: boolean;
   } | null>(null);
 
+  // Guard: ensure reward dispatch fires exactly ONCE per game-over instance
+  const hasDispatchedReward = useRef(false);
+
   const ONLINE_BATTLE_BONUS = 25;
   const ONLINE_WIN_PRIZE = 50;
   const ONLINE_LOSS_PENALTY = 50;
@@ -90,12 +93,13 @@ const GameOverModal = ({
           isOnline: isOnline
         });
 
-        // Dispatch to backend to save the new calculated ratings.
-        if (isWin || isLoss || isDraw) {
+        // Dispatch to backend ONLY ONCE per game-over instance
+        if (!hasDispatchedReward.current && (isWin || isLoss || isDraw)) {
+          hasDispatchedReward.current = true;
           dispatch(
             updateGameStatsThunk({
               gameId: 'whot',
-              result: result, // 'win' | 'loss' | 'draw'
+              result: result,
               newRating: finalRating,
             })
           );
@@ -104,11 +108,13 @@ const GameOverModal = ({
         onStatsUpdate?.(result, finalRating);
       }
     }
-  }, [visible, winner, isWin, isLoss, isDraw, level, playerRating, result, dispatch, onStatsUpdate, calculatedData, isOnline]);
+  }, [visible, winner, isWin, isLoss, isDraw, level, result, dispatch, calculatedData, isOnline]);
 
   useEffect(() => {
     if (!visible) {
       setCalculatedData(null);
+      // Reset the guard so a NEW game-over can dispatch fresh rewards
+      hasDispatchedReward.current = false;
     }
   }, [visible]);
 

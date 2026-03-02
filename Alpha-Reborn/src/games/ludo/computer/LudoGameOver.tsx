@@ -1,5 +1,5 @@
 // LudoGameOver.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppDispatch } from '../../../store/hooks';
@@ -55,6 +55,9 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
         isOnline?: boolean;
     } | null>(null);
 
+    // Guard: ensure reward dispatch fires exactly ONCE per game-over instance
+    const hasDispatchedReward = useRef(false);
+
     useEffect(() => {
         // Recalculate if we haven't calculated YET, OR if we calculated for the WRONG online state
         if (result && (!calculatedData || calculatedData.isOnline !== isOnline)) {
@@ -85,8 +88,9 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
                 isOnline: isOnline
             });
 
-            // Dispatch to backend to save the new calculated ratings.
-            if (isWin || isLoss) {
+            // Dispatch to backend ONLY ONCE per game-over instance
+            if (!hasDispatchedReward.current && (isWin || isLoss)) {
+                hasDispatchedReward.current = true;
                 dispatch(
                     updateGameStatsThunk({
                         gameId: 'ludo',
@@ -98,7 +102,7 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
 
             onStatsUpdate?.(result, finalRating);
         }
-    }, [result, isWin, isLoss, level, playerRating, dispatch, onStatsUpdate, calculatedData, isOnline]);
+    }, [result, isWin, isLoss, level, dispatch, calculatedData, isOnline]);
 
     const displayLevelReward = calculatedData?.levelReward ?? 0;
     const displayNewRating = calculatedData?.finalRating ?? playerRating;
