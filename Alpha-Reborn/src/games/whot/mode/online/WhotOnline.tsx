@@ -202,6 +202,38 @@ const WhotOnlineUI = () => {
     };
   }, []);
 
+  // --- Intercept back button during active game ---
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+      // If game is not in progress (COMPLETED, null, etc.), clear state and allow leaving
+      if (!currentGame || currentGame.status !== 'IN_PROGRESS') {
+        dispatch(clearCurrentGame());
+        return;
+      }
+
+      // Prevent default back action
+      e.preventDefault();
+
+      // Show forfeit confirmation
+      Alert.alert(
+        'Forfeit Match',
+        'If you forfeit, you will lose. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Yes',
+            style: 'destructive',
+            onPress: () => {
+              socketService.emitForfeit(currentGame.id);
+            }
+          }
+        ]
+      );
+    });
+
+    return unsubscribe;
+  }, [navigation, currentGame]);
+
   // --- Mark game as completed to stop polling/socket updates ---
   useEffect(() => {
     if (currentGame?.status === 'COMPLETED' && !gameOverProcessedRef.current) {
@@ -296,9 +328,24 @@ const WhotOnlineUI = () => {
         }
       });
 
+      // ─── GAME ENDED (forfeit, normal win) ───
+      const unsubGameEnded = socketService.onGameEnded((data: any) => {
+        console.log("📡 [WhotOnline] Game Ended Event:", data);
+        if (data?.winnerId && currentGame) {
+          // Immediately block polling/socket updates
+          gameOverProcessedRef.current = true;
+          dispatch(setCurrentGame({
+            ...currentGame,
+            status: 'COMPLETED',
+            winnerId: data.winnerId
+          }));
+        }
+      });
+
       return () => {
         unsubOpponentMove();
         unsubStateUpdate();
+        unsubGameEnded();
         socketService.leaveGame(currentGame.id);
       };
     }
@@ -872,8 +919,26 @@ const WhotOnlineUI = () => {
 
 
   const handleExit = () => {
-    dispatch(clearCurrentGame());
-    (navigation as any).navigate('GameLobby', { gameId: 'whot' });
+    // If game is still in progress, show forfeit confirmation
+    if (currentGame && currentGame.status === 'IN_PROGRESS') {
+      Alert.alert(
+        'Forfeit Match',
+        'If you forfeit, you will lose. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Yes',
+            style: 'destructive',
+            onPress: () => {
+              socketService.emitForfeit(currentGame.id);
+            }
+          }
+        ]
+      );
+    } else {
+      dispatch(clearCurrentGame());
+      (navigation as any).navigate('GameLobby', { gameId: 'whot' });
+    }
   };
 
   const handleRematch = () => {

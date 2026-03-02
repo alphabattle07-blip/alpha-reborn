@@ -56,6 +56,17 @@ class SocketService {
         this.socket.on('turnStarted', (data: any) => {
             this.emitLocal('turnStarted', data);
         });
+
+        // Game ended (normal win or forfeit)
+        this.socket.on('gameEnded', (data: any) => {
+            console.log('[SocketService] Received gameEnded:', data);
+            this.emitLocal('gameEnded', data);
+        });
+
+        this.socket.on('gameForfeit', (data: any) => {
+            console.log('[SocketService] Received gameForfeit:', data);
+            this.emitLocal('gameEnded', data); // Normalize to same event
+        });
     }
 
     getSocket() {
@@ -88,6 +99,15 @@ class SocketService {
             this.socket.emit('leaveGame', gameId);
         }
         this.gameId = null;
+    }
+
+    emitForfeit(gameId: string) {
+        if (!this.socket?.connected) {
+            console.warn('[SocketService] Cannot emit forfeit, socket disconnected');
+            return;
+        }
+        console.log('[SocketService] Emitting forfeitGame for game:', gameId);
+        this.socket.emit('forfeitGame', { gameId });
     }
 
     register(userId: string) {
@@ -162,6 +182,10 @@ class SocketService {
 
     onTurnStarted(callback: (data: any) => void) {
         return this.on('turnStarted', callback);
+    }
+
+    onGameEnded(callback: (data: any) => void) {
+        return this.on('gameEnded', callback);
     }
 
     private on(event: string, callback: Function) {

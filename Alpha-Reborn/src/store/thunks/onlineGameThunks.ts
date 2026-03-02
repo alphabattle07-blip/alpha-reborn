@@ -68,9 +68,14 @@ export const fetchAvailableGames = createAsyncThunk(
 // Fetch current game state
 export const fetchGameState = createAsyncThunk(
   'onlineGame/fetchGameState',
-  async (gameId: string, { dispatch, rejectWithValue }) => {
+  async (gameId: string, { dispatch, getState, rejectWithValue }) => {
     try {
       const game = await gameService.getGame(gameId);
+      // Don't overwrite a COMPLETED game with a stale in-flight response
+      const currentState = (getState() as any).onlineGame?.currentGame;
+      if (currentState?.status === 'COMPLETED') {
+        return currentState;
+      }
       dispatch(setCurrentGame(game));
       return game;
     } catch (error: any) {
