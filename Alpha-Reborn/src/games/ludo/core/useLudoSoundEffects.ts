@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Audio } from "expo-av";
 import { LudoGameState, LudoSeed } from "./ui/LudoGameLogic";
 import { LudoAssetManager } from "./ui/LudoAssetManager";
+import { store } from "../../../store";
 
 interface StateSnapshot {
     seedPositions: Record<string, number>; // Maps seed ID to its position
@@ -39,6 +40,10 @@ const soundCache: Partial<Record<keyof typeof LudoAssetManager.sounds, Audio.Sou
 
 export async function playLudoSound(soundKey: keyof typeof LudoAssetManager.sounds) {
     try {
+        // Enforce Sound Control Settings
+        const soundSettings = store.getState().soundSettings.ludo;
+        if (!soundSettings.sfx) return;
+
         if (!audioModeConfigured) {
             await Audio.setAudioModeAsync({
                 playsInSilentModeIOS: true,

@@ -17,6 +17,7 @@ import { getComputerMove } from "../../computer/LudoComputerLogic";
 import { Ludo3DDie } from "./Ludo3DDie";
 import { useLudoTimerColor } from "./LudoTimerRing";
 import { useLudoSoundEffects } from "../useLudoSoundEffects";
+import QuickMuteButton from '../../../../components/QuickMuteButton';
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#222" },
@@ -59,6 +60,12 @@ const styles = StyleSheet.create({
         left: 20,
         alignItems: 'flex-start',
         zIndex: 10,
+    },
+    soundControlContainer: {
+        position: 'absolute',
+        top: 100,
+        right: 20,
+        zIndex: 15,
     }
 });
 
@@ -353,6 +360,10 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                     color="#34C759"
                     score={p2Score}
                 />
+            </View>
+
+            <View style={styles.soundControlContainer}>
+                <QuickMuteButton gameId="ludo" />
             </View>
 
             {/* Game Board */}

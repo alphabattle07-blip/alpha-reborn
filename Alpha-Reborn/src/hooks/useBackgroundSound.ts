@@ -1,15 +1,28 @@
 import { useEffect, useRef } from "react";
 import { Audio, AVPlaybackSource } from "expo-av";
+import { useSelector } from "react-redux";
+import { RootState } from "../store";
 
 /**
  * Plays an array of background music tracks in sequence,
  * cycling back to the first track after the last one finishes.
  * Automatically stops and unloads on unmount.
  */
-export function useBackgroundSound(soundFiles: AVPlaybackSource[]) {
+export function useBackgroundSound(soundFiles: AVPlaybackSource[], gameId?: 'whot' | 'ludo') {
   const soundRef = useRef<Audio.Sound | null>(null);
   const trackIndexRef = useRef(0);
   const isMountedRef = useRef(true);
+
+  // If a gameId is provided, sync volume with Redux. Otherwise default to true.
+  const isBgmEnabled = useSelector((state: RootState) =>
+    gameId ? state.soundSettings[gameId].bgm : true
+  );
+
+  useEffect(() => {
+    if (soundRef.current) {
+      soundRef.current.setVolumeAsync(isBgmEnabled ? 0.5 : 0).catch(() => { });
+    }
+  }, [isBgmEnabled]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -36,7 +49,7 @@ export function useBackgroundSound(soundFiles: AVPlaybackSource[]) {
           soundFiles[index],
           {
             isLooping: false,
-            volume: 0.5,
+            volume: isBgmEnabled ? 0.5 : 0,
             shouldPlay: true,
           }
         );

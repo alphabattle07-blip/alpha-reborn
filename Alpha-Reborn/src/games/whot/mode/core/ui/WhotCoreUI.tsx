@@ -13,6 +13,7 @@ import ComputerUI from '../../computer/whotComputerUI';
 import { CARD_HEIGHT } from './whotConfig';
 import { getCoords } from '../coordinateHelper';
 import GameOverModal from './GameOverModal';
+import QuickMuteButton from '../../../../../components/QuickMuteButton';
 
 // Calculate hand score for Rule 2 display
 const calculateHandScore = (hand: Card[]): number => {
@@ -244,6 +245,10 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                 </View>
             )}
 
+            <View style={styles.soundControlContainer}>
+                <QuickMuteButton gameId="whot" />
+            </View>
+
             <MemoizedBackground width={stableWidth} height={stableHeight} />
             <View style={computerHandStyle} />
 
@@ -373,6 +378,12 @@ const styles = StyleSheet.create({
         right: 20,
         alignSelf: "flex-end",
         zIndex: 10,
+    },
+    soundControlContainer: {
+        position: 'absolute',
+        top: 40,
+        right: 20,
+        zIndex: 100,
     },
     handContainerBase: {
         position: "absolute",

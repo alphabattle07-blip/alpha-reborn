@@ -20,7 +20,7 @@ type WhotIndexProps = {
 
 export default function WhotIndex({ mode }: WhotIndexProps) {
   const { toast } = useToast();
-  useBackgroundSound(BG_TRACKS);
+  useBackgroundSound(BG_TRACKS, 'whot');
   // Note: The 'game' state is no longer needed for the computer mode,
   // as WhotComputerGameScreen manages its own state.
   // You might still need it for other modes.

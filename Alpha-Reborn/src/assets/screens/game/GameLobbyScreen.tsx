@@ -2,6 +2,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import SoundDropdownPanel from '../../../components/SoundDropdownPanel';
 
 type RootStackParamList = {
   GameLobby: { gameId: string };
@@ -19,6 +20,9 @@ export default function GameLobby() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.headerRight}>
+        <SoundDropdownPanel gameId={gameId as 'whot' | 'ludo'} />
+      </View>
       <Text style={styles.title}>Welcome to {gameId} Lobby</Text>
 
       <TouchableOpacity style={styles.button} onPress={() => handleNavigate('online')}>
@@ -63,4 +67,10 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
   },
+  headerRight: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+  }
 });

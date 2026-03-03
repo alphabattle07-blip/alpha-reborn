@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Audio } from "expo-av";
 import { GameState } from "./types";
 import { WhotAssetManager } from "./ui/WhotAssetManager";
+import { store } from "../../../../store";
 
 /**
  * Maps card numbers to their corresponding sound keys in WhotAssetManager.
@@ -72,6 +73,13 @@ let audioModeConfigured = false;
  */
 async function playSound(soundKey: keyof typeof WhotAssetManager.sounds) {
     try {
+        const soundSettings = store.getState().soundSettings.whot;
+        const isSfx = soundKey === "cardAction";
+        const isVoice = !isSfx;
+
+        if (isVoice && !soundSettings.voice) return;
+        if (isSfx && !soundSettings.sfx) return;
+
         // Configure audio mode once (allows playback in silent mode)
         if (!audioModeConfigured) {
             await Audio.setAudioModeAsync({

@@ -22,7 +22,7 @@ type LudoIndexProps = {
 
 export default function LudoIndex({ mode }: LudoIndexProps) {
   const { toast } = useToast();
-  useBackgroundSound(BG_TRACKS);
+  useBackgroundSound(BG_TRACKS, 'ludo');
 
   // Preload Ludo sounds
   React.useEffect(() => {

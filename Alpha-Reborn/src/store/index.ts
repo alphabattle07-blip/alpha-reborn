@@ -7,20 +7,22 @@ import userReducer from './slices/userSlice';
 import authReducer from './slices/authSlice';
 import gameStatsReducer from './slices/gameStatsSlice';
 import onlineGameReducer from './slices/onlineGameSlice';
+import soundSettingsReducer from './slices/soundSettingsSlice';
 
 const rootReducer = combineReducers({
   user: userReducer,
   auth: authReducer,
   gameStats: gameStatsReducer,
   onlineGame: onlineGameReducer,
+  soundSettings: soundSettingsReducer,
 });
 
 const persistConfig = {
   key: 'root',
   storage: AsyncStorage,
-  // IMPORTANT: Only persist the 'auth' slice. The user profile should be
-  // fetched on app load to ensure it's fresh.
-  whitelist: ['auth'],
+  // IMPORTANT: Only persist the 'auth' slice and settings.
+  // The user profile should be fetched on app load to ensure it's fresh.
+  whitelist: ['auth', 'soundSettings'],
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
