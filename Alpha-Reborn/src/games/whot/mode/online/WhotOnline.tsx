@@ -17,6 +17,7 @@ import { logTap, logEmit } from '../core/ui/LatencyLogger';
 import { useToast } from '../../../../hooks/useToast';
 import { animationLock } from './animationLock';
 import { animationQueue } from './animationQueue';
+import { useWhotSoundEffects } from '../core/useWhotSoundEffects';
 
 // --- ERROR BOUNDARY --
 interface ErrorBoundaryState {
@@ -69,6 +70,19 @@ const WhotOnlineUI = () => {
   const { width, height } = useWindowDimensions();
   const { toast } = useToast();
   const isLandscape = width > height;
+
+  // --- SOUND EFFECTS ---
+  // Hook call is here (before any early returns) so it always runs.
+  // The actual `visualGameState` is computed below via useMemo; we pass a
+  // derived version that watches the raw board from Redux.
+  const rawBoardState = useMemo(() => {
+    if (!currentGame?.board) return null;
+    try {
+      const board = typeof currentGame.board === 'string' ? JSON.parse(currentGame.board) : currentGame.board;
+      return board as GameState;
+    } catch { return null; }
+  }, [currentGame?.board]);
+  useWhotSoundEffects(rawBoardState);
 
   // --- WHOT-SPECIFIC RATING RESOLUTION ---
   const { gameStats: reduxGameStats } = useAppSelector((state) => state.gameStats);

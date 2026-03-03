@@ -10,16 +10,22 @@ import { Audio } from 'expo-av';
 export const WhotAssetManager = {
     // 1. Audio Assets
     sounds: {
-        pickTwo: require('../../../../../assets/sounds/whotVoicing/pick_two.mp3'),
-        generalMarket: require('../../../../../assets/sounds/whotVoicing/general_market.mp3'),
-        holdOn: require('../../../../../assets/sounds/whotVoicing/hold_on.mp3'),
-        pickThree: require('../../../../../assets/sounds/whotVoicing/pick_3.mp3'),
-        suspension: require('../../../../../assets/sounds/whotVoicing/suspension.mp3'),
-        warning: require('../../../../../assets/sounds/whotVoicing/warning.mp3'),
-        lastCard: require('../../../../../assets/sounds/whotVoicing/last_card.mp3'),
-        checkUp: require('../../../../../assets/sounds/whotVoicing/check-up.mp3'),
-        defended: require('../../../../../assets/sounds/whotVoicing/defended.mp3'),
-        request: require('../../../../../assets/sounds/whotVoicing/i_request.mp3'),
+        pickTwo: require('../../../../../assets/sounds/whot sound effect/whotVoicing/pick_two.mp3'),
+        generalMarket: require('../../../../../assets/sounds/whot sound effect/whotVoicing/general_market.mp3'),
+        holdOn: require('../../../../../assets/sounds/whot sound effect/whotVoicing/hold_on.mp3'),
+        pickThree: require('../../../../../assets/sounds/whot sound effect/whotVoicing/pick_3.mp3'),
+        suspension: require('../../../../../assets/sounds/whot sound effect/whotVoicing/suspension.mp3'),
+        warning: require('../../../../../assets/sounds/whot sound effect/whotVoicing/warning.mp3'),
+        lastCard: require('../../../../../assets/sounds/whot sound effect/whotVoicing/last_card.mp3'),
+        checkUp: require('../../../../../assets/sounds/whot sound effect/whotVoicing/check-up.mp3'),
+        defended: require('../../../../../assets/sounds/whot sound effect/whotVoicing/defended.mp3'),
+        request: require('../../../../../assets/sounds/whot sound effect/whotVoicing/i_request.mp3'),
+        continue: require('../../../../../assets/sounds/whot sound effect/whotVoicing/continue.mp3'),
+        circle: require('../../../../../assets/sounds/whot sound effect/whotVoicing/circle.mp3'),
+        square: require('../../../../../assets/sounds/whot sound effect/whotVoicing/square.mp3'),
+        triangle: require('../../../../../assets/sounds/whot sound effect/whotVoicing/triangle.mp3'),
+        star: require('../../../../../assets/sounds/whot sound effect/whotVoicing/star.mp3'),
+        cross: require('../../../../../assets/sounds/whot sound effect/whotVoicing/cross.mp3'),
     },
 
     // 2. Preload Everything

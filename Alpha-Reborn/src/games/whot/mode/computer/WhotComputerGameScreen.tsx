@@ -50,6 +50,7 @@ import { chooseComputerMove, chooseComputerSuit } from "./whotComputerLogic";
 import { WhotAssetManager } from "../core/ui/WhotAssetManager";
 import { useNavigation } from "@react-navigation/native";
 import { useToast } from "../../../../hooks/useToast";
+import { useWhotSoundEffects } from "../core/useWhotSoundEffects";
 
 // Error Boundary for Computer Mode
 interface ErrorBoundaryState {
@@ -154,6 +155,7 @@ const WhotComputerUI = () => {
     levels[0].value
   );
   const [game, setGame] = useState<GameData | null>(null);
+  useWhotSoundEffects(game?.gameState ?? null);
   const [isAnimating, setIsAnimating] = useState(false);
   const [allCards, setAllCards] = useState<Card[]>([]);
   const [isCardListReady, setIsCardListReady] = useState(false);
