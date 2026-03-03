@@ -33,7 +33,9 @@ function takeSnapshot(state: LudoGameState | null): StateSnapshot {
     };
 }
 
+// --- Global Audio Player ---
 let audioModeConfigured = false;
+const soundCache: Partial<Record<keyof typeof LudoAssetManager.sounds, Audio.Sound>> = {};
 
 export async function playLudoSound(soundKey: keyof typeof LudoAssetManager.sounds) {
     try {
@@ -49,16 +51,25 @@ export async function playLudoSound(soundKey: keyof typeof LudoAssetManager.soun
         const source = LudoAssetManager.sounds[soundKey];
         if (!source) return;
 
+        // Reuse cached sound instance if it exists
+        if (soundCache[soundKey]) {
+            const cachedSound = soundCache[soundKey];
+            const status = await cachedSound?.getStatusAsync();
+            if (status && status.isLoaded) {
+                await cachedSound?.setPositionAsync(0);
+                await cachedSound?.playAsync();
+            }
+            return;
+        }
+
+        // Create new sound instance and cache it
         const { sound } = await Audio.Sound.createAsync(source, {
             shouldPlay: true,
             volume: 1.0,
         });
 
-        sound.setOnPlaybackStatusUpdate((status) => {
-            if (status.isLoaded && status.didJustFinish) {
-                sound.unloadAsync().catch(() => { });
-            }
-        });
+        soundCache[soundKey] = sound;
+
     } catch (error) {
         console.warn(`🔊 [LudoSFX] Failed to play sound "${soundKey}":`, error);
     }
