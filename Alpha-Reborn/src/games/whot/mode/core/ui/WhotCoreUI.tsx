@@ -245,10 +245,6 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                 </View>
             )}
 
-            <View style={styles.soundControlContainer}>
-                <QuickMuteButton gameId="whot" />
-            </View>
-
             <MemoizedBackground width={stableWidth} height={stableHeight} />
             <View style={computerHandStyle} />
 
@@ -357,6 +353,10 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                     isOnline={gameOver.isOnline}
                 />
             )}
+
+            <View style={styles.soundControlContainer} pointerEvents="box-none">
+                <QuickMuteButton gameId="whot" />
+            </View>
         </View>
     );
 };
@@ -383,7 +383,8 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: 40,
         right: 20,
-        zIndex: 100,
+        zIndex: 9999,
+        elevation: 100,
     },
     handContainerBase: {
         position: "absolute",

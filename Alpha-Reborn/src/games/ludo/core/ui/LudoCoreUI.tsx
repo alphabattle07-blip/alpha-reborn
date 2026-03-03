@@ -65,7 +65,8 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: 100,
         right: 20,
-        zIndex: 15,
+        zIndex: 9999,
+        elevation: 100,
     }
 });
 
@@ -362,10 +363,6 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                 />
             </View>
 
-            <View style={styles.soundControlContainer}>
-                <QuickMuteButton gameId="ludo" />
-            </View>
-
             {/* Game Board */}
             <View style={styles.boardContainer}>
                 <LudoSkiaBoard
@@ -404,6 +401,10 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                     />
                 </View>
             )}
+
+            <View style={styles.soundControlContainer} pointerEvents="box-none">
+                <QuickMuteButton gameId="ludo" />
+            </View>
         </View>
     );
 };
