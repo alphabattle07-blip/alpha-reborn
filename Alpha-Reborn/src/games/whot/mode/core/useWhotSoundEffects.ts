@@ -31,6 +31,7 @@ interface StateSnapshot {
     pendingActionType: string | null;
     pendingDefendPlayer: number | null;
     calledSuit: string | null;
+    ruleVersion: string | null;
     handSizes: number[];
 }
 
@@ -42,6 +43,7 @@ function takeSnapshot(state: GameState | null): StateSnapshot {
             pendingActionType: null,
             pendingDefendPlayer: null,
             calledSuit: null,
+            ruleVersion: null,
             handSizes: [],
         };
     }
@@ -55,6 +57,7 @@ function takeSnapshot(state: GameState | null): StateSnapshot {
                 ? state.pendingAction.playerIndex
                 : null,
         calledSuit: state.calledSuit ?? null,
+        ruleVersion: state.ruleVersion ?? null,
         handSizes: state.players.map((p) => p.hand.length),
     };
 }
@@ -134,27 +137,36 @@ export function useWhotSoundEffects(gameState: GameState | null) {
         if (curr.topPileCardId && curr.topPileCardId !== prev.topPileCardId) {
             const topCard = gameState.pile[gameState.pile.length - 1];
             if (topCard) {
-                // Check if this was a successful DEFENSE (defend → null transition with card played)
+                const isRuleTwo = curr.ruleVersion === "rule2";
                 const wasDefending = prev.pendingActionType === "defend";
                 const defenseCleared = curr.pendingActionType !== "defend";
+                const wasContinuing = prev.pendingActionType === "continue";
+                // In Rule Two, cards 5 (Pick 3) and 8 (Suspension) are normal — no special sounds
+                const isSpecialInCurrentRule = isRuleTwo
+                    ? (topCard.number === 1 || topCard.number === 2 || topCard.number === 14 || topCard.number === 20)
+                    : !!CARD_SOUND_MAP[topCard.number];
 
-                if (wasDefending && defenseCleared && (topCard.number === 2 || topCard.number === 5)) {
-                    // A defend card was played and the defense resolved
+                if (!isRuleTwo && wasDefending && defenseCleared && (topCard.number === 2 || topCard.number === 5)) {
+                    // Rule 1 only: defense resolved
                     playSound("defended");
-                } else if (
-                    prev.pendingActionType === "continue" &&
-                    curr.pendingActionType === null &&
-                    !CARD_SOUND_MAP[topCard.number]
-                ) {
-                    // A normal card was played to resolve a "continue" after a special card
-                    playSound("continue");
-                } else {
-                    // Normal card play → play the card-specific sound
+                } else if (wasContinuing) {
+                    // A card was played during a "continue" action (after a special card).
+                    if (isSpecialInCurrentRule) {
+                        // Special card follows special card → play ITS own sound
+                        const soundKey = CARD_SOUND_MAP[topCard.number];
+                        if (soundKey) playSound(soundKey);
+                    } else {
+                        // Normal card after special card → play "continue"
+                        playSound("continue");
+                    }
+                } else if (isSpecialInCurrentRule) {
+                    // Normal special card play (not during continue)
                     const soundKey = CARD_SOUND_MAP[topCard.number];
                     if (soundKey) {
                         playSound(soundKey);
                     }
                 }
+                // else: normal card with no special sound — no sound plays
             }
         }
 
