@@ -5,6 +5,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSharedValue, withTiming, withSequence, withDelay, withRepeat, Easing, runOnJS, useDerivedValue } from 'react-native-reanimated';
 import { LudoBoardData } from './LudoCoordinates';
 import { Path, Skia } from '@shopify/react-native-skia';
+import { playLudoSound } from '../useLudoSoundEffects';
 
 const boardImageSource = require('../../../../assets/images/ludoBoard.png');
 const blueImageSource = require('../../../../assets/images/blue.png');
@@ -200,7 +201,11 @@ const AnimatedSeed = ({ id, playerId, seedSubIndex, currentPos, landingPos, anim
         const scaleSequence: any[] = [];
         steps.forEach(() => {
             scaleSequence.push(withTiming(1.25, { duration: TILE_ANIMATION_DURATION / 2, easing: Easing.out(Easing.quad) }));
-            scaleSequence.push(withTiming(1.0, { duration: TILE_ANIMATION_DURATION / 2, easing: Easing.in(Easing.quad) }));
+            scaleSequence.push(withTiming(1.0, { duration: TILE_ANIMATION_DURATION / 2, easing: Easing.in(Easing.quad) }, (finished) => {
+                if (finished) {
+                    runOnJS(playLudoSound)('seedMove');
+                }
+            }));
         });
 
         if (landingPos !== newPos) {

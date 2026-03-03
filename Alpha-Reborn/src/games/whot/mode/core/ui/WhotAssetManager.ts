@@ -26,6 +26,7 @@ export const WhotAssetManager = {
         triangle: require('../../../../../assets/sounds/whot sound effect/whotVoicing/triangle.mp3'),
         star: require('../../../../../assets/sounds/whot sound effect/whotVoicing/star.mp3'),
         cross: require('../../../../../assets/sounds/whot sound effect/whotVoicing/cross.mp3'),
+        cardAction: require('../../../../../assets/sounds/whot sound effect/freesound_community-card-sounds-35956.mp3'),
     },
 
     // 2. Preload Everything

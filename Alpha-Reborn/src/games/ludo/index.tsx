@@ -12,6 +12,7 @@ import { useBackgroundSound } from "../../hooks/useBackgroundSound";
 import bgTrack1 from "../../assets/sounds/backgroudsound/backgrounds1_short.mp3";
 import bgTrack2 from "../../assets/sounds/backgroudsound/backgrounds2_short.mp3";
 import bgTrack3 from "../../assets/sounds/backgroudsound/backgrounds3_short.mp3";
+import { LudoAssetManager } from "./core/ui/LudoAssetManager";
 
 const BG_TRACKS = [bgTrack1, bgTrack2, bgTrack3];
 
@@ -22,6 +23,12 @@ type LudoIndexProps = {
 export default function LudoIndex({ mode }: LudoIndexProps) {
   const { toast } = useToast();
   useBackgroundSound(BG_TRACKS);
+
+  // Preload Ludo sounds
+  React.useEffect(() => {
+    LudoAssetManager.preload();
+  }, []);
+
   // Note: The 'game' state is no longer needed for the computer mode,
   // as ComputerGameScreen manages its own state.
   // You might still need it for other modes.

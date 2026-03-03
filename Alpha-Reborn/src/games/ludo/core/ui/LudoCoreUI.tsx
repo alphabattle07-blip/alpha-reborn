@@ -16,6 +16,7 @@ import { getRankFromRating } from '../../../../utils/rank';
 import { getComputerMove } from "../../computer/LudoComputerLogic";
 import { Ludo3DDie } from "./Ludo3DDie";
 import { useLudoTimerColor } from "./LudoTimerRing";
+import { useLudoSoundEffects } from "../useLudoSoundEffects";
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#222" },
@@ -175,6 +176,9 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
 
     const player = propPlayer ?? defaultPlayer;
     const opponent = propOpponent ?? defaultOpponent;
+
+    // --- Sound Effects ---
+    useLudoSoundEffects(gameState);
 
     // --- Derived State for Board ---
     const boardPositions = useMemo(() => {

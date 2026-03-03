@@ -28,6 +28,7 @@ const SUIT_SOUND_MAP: Record<string, keyof typeof WhotAssetManager.sounds> = {
 interface StateSnapshot {
     topPileCardId: string | null;
     topPileCardNumber: number | null;
+    pileSize: number;
     pendingActionType: string | null;
     pendingDefendPlayer: number | null;
     calledSuit: string | null;
@@ -40,6 +41,7 @@ function takeSnapshot(state: GameState | null): StateSnapshot {
         return {
             topPileCardId: null,
             topPileCardNumber: null,
+            pileSize: 0,
             pendingActionType: null,
             pendingDefendPlayer: null,
             calledSuit: null,
@@ -51,6 +53,7 @@ function takeSnapshot(state: GameState | null): StateSnapshot {
     return {
         topPileCardId: topCard?.id ?? null,
         topPileCardNumber: topCard?.number ?? null,
+        pileSize: state.pile.length,
         pendingActionType: state.pendingAction?.type ?? null,
         pendingDefendPlayer:
             state.pendingAction?.type === "defend"
@@ -133,8 +136,11 @@ export function useWhotSoundEffects(gameState: GameState | null) {
             currHands: curr.handSizes,
         });
 
-        // --- 1. Card Played Detection ---
+        // --- 1. Card Played / Placed on Pile ---
         if (curr.topPileCardId && curr.topPileCardId !== prev.topPileCardId) {
+            // Card action sound for every card placed on the pile
+            playSound("cardAction");
+
             const topCard = gameState.pile[gameState.pile.length - 1];
             if (topCard) {
                 const isRuleTwo = curr.ruleVersion === "rule2";
@@ -166,7 +172,18 @@ export function useWhotSoundEffects(gameState: GameState | null) {
                         playSound(soundKey);
                     }
                 }
-                // else: normal card with no special sound — no sound plays
+                // else: normal card with no special sound — no voicing plays
+            }
+        }
+
+        // --- 1b. Card Drawn from Market ---
+        // Detect when any player's hand increases (card drawn/dealt)
+        for (let i = 0; i < curr.handSizes.length; i++) {
+            const prevSize = prev.handSizes[i] ?? 0;
+            const currSize = curr.handSizes[i] ?? 0;
+            if (currSize > prevSize) {
+                playSound("cardAction");
+                break; // One sound per state change is enough
             }
         }
 
