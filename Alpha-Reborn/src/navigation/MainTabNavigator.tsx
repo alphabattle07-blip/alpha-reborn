@@ -6,12 +6,10 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 
 // Import your screens
-import NotificationScreen from "../assets/screens/notification/Notification";
 import ProfileScreen from "../assets/screens/profile/ProfileScreen";
 import MarketScreen from "../assets/screens/market/MarketScreen";
 import WalletScreen from "../assets/screens/wallet/WalletScreen";
-import { useAppDispatch } from '../store/hooks';
-import { logout } from '../store/slices/authSlice';
+import { DrawerActions } from '@react-navigation/native';
 
 const Tab = createBottomTabNavigator();
 
@@ -46,15 +44,24 @@ const GameCard: React.FC<{ item: Game; onPress: () => void; }> = ({ item, onPres
 
 function GamesScreen() {
   const { width } = useWindowDimensions();
-  const numColumns = width > 600 ? 3 : 2;
-  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<any>();
   const handleGamePress = (game: Game) => {
     navigation.navigate('GameLobby', { gameId: game.id });
   };
 
   return (
     <LinearGradient colors={['#0b1f3a', '#27175d']} style={styles.container}>
-      <View style={styles.header}><Text style={styles.headerText}>Choose Your Game</Text></View>
+      {/* Top Bar Navigation */}
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => navigation.dispatch(DrawerActions.openDrawer())}>
+          <Ionicons name="menu-outline" size={32} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerText}>Choose Your Game</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('notifications')}>
+          <Ionicons name="notifications-outline" size={28} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={GAMES}
         renderItem={({ item }) => <GameCard item={item} onPress={() => handleGamePress(item)} />}
@@ -69,8 +76,6 @@ function GamesScreen() {
 // ✅ Bottom Tab Navigation including Games
 
 export default function MainTabNavigator() {
-  const dispatch = useAppDispatch();
-
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -83,9 +88,7 @@ export default function MainTabNavigator() {
           if (route.name === "Wallet") iconName = "wallet-outline";
           else if (route.name === "Market") iconName = "swap-horizontal-outline";
           else if (route.name === "Profile") iconName = "person-circle-outline";
-          else if (route.name === "Notifications") iconName = "notifications-outline";
           else if (route.name === "Games") iconName = "game-controller-outline";
-          else if (route.name === "Logout") iconName = "log-out-outline";
           return <Ionicons name={iconName} size={size} color={color} />;
         },
       })}
@@ -93,20 +96,9 @@ export default function MainTabNavigator() {
       <Tab.Screen name="Games" component={GamesScreen} />
       <Tab.Screen name="Wallet" component={WalletScreen} />
       <Tab.Screen name="Market" component={MarketScreen} />
-      <Tab.Screen name="Notifications" component={NotificationScreen} />
       <Tab.Screen name="Profile">
         {() => <ProfileScreen isOwnProfile={true} />}
       </Tab.Screen>
-      <Tab.Screen
-        name="Logout"
-        component={() => null} // It doesn't navigate anywhere
-        listeners={{
-          tabPress: (e) => {
-            e.preventDefault(); // Prevent default action
-            dispatch(logout()); // Dispatch the logout action
-          },
-        }}
-      />
     </Tab.Navigator>
   );
 }
@@ -115,15 +107,17 @@ export default function MainTabNavigator() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 60,
+    paddingTop: 50,
     paddingHorizontal: 20,
   },
-  header: {
-    marginBottom: 20,
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 20,
   },
   headerText: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#ffffff',
   },
