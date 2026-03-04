@@ -26,11 +26,11 @@ type Game = {
 };
 
 const GAMES: Game[] = [
-  { id: 'chess', title: 'Chess', icon: '♟️' },
-  { id: 'ayo', title: 'Ayo', icon: '🪙' },
+  // { id: 'chess', title: 'Chess', icon: '♟️' },
+  // { id: 'ayo', title: 'Ayo', icon: '🪙' },
   { id: 'whot', title: 'Whot', icon: '♠️' },
   { id: 'ludo', title: 'Ludo', icon: '🎲' },
-  { id: 'droughts', title: 'Draughts', icon: '♛' },
+  // { id: 'droughts', title: 'Draughts', icon: '♛' },
 ];
 
 

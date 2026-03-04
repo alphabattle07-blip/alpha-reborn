@@ -119,11 +119,11 @@ export default function ProfileScreen({ isOwnProfile: propIsOwnProfile }: Profil
   const error = isOwnProfile ? userError : otherPlayerError;
 
   const DEFAULT_GAMES = [
-    { id: 'chess', title: 'Chess' },
-    { id: 'ayo', title: 'Ayo' },
+    // { id: 'chess', title: 'Chess' },
+    // { id: 'ayo', title: 'Ayo' },
     { id: 'whot', title: 'Whot' },
     { id: 'ludo', title: 'Ludo' },
-    { id: 'draughts', title: 'Draughts' },
+    // { id: 'draughts', title: 'Draughts' },
   ];
 
   // --- RENDER PREPARATION ---
