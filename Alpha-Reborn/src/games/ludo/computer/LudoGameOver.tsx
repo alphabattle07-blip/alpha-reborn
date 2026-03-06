@@ -58,6 +58,13 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
     // Guard: ensure reward dispatch fires exactly ONCE per game-over instance
     const hasDispatchedReward = useRef(false);
 
+    // Capture the initial playerRating so Redux updates don't change the display mid-view
+    const initialRatingRef = useRef(playerRating);
+    // Only update if this is a fresh mount (hasDispatchedReward hasn't fired yet)
+    if (!hasDispatchedReward.current && playerRating !== initialRatingRef.current) {
+        initialRatingRef.current = playerRating;
+    }
+
     useEffect(() => {
         // Recalculate if we haven't calculated YET, OR if we calculated for the WRONG online state
         if (result && (!calculatedData || calculatedData.isOnline !== isOnline)) {
@@ -79,7 +86,7 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
                 }
             }
 
-            const finalRating = playerRating + totalChange;
+            const finalRating = initialRatingRef.current + totalChange;
 
             setCalculatedData({
                 levelReward: reward,
@@ -148,7 +155,7 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
                         <View style={styles.rewardRow}>
                             <Text style={styles.rewardLabel}>Rapid Rating</Text>
                             <Text style={[styles.rewardValue, styles.totalRewardValue]}>
-                                <Ionicons name="medal" size={16} color="#FFD700" /> {playerRating} {displayBonus + displayLevelReward >= 0 ? '+' : ''}{displayBonus + displayLevelReward} = {displayNewRating}
+                                <Ionicons name="medal" size={16} color="#FFD700" /> {initialRatingRef.current} {displayBonus + displayLevelReward >= 0 ? '+' : ''}{displayBonus + displayLevelReward} = {displayNewRating}
                             </Text>
                         </View>
                     </View>

@@ -14,6 +14,9 @@ import { usePlayerProfile } from '../../../hooks/usePlayerProfile';
 import { LudoCoreUI } from '../core/ui/LudoCoreUI';
 import { LudoGameState, initializeGame } from '../core/ui/LudoGameLogic';
 import LudoGameOver from '../computer/LudoGameOver';
+import { ChatToggleButton } from '../../../components/chat/ChatToggleButton';
+import { MatchChatOverlay } from '../../../components/chat/MatchChatOverlay';
+import { setHistory, addMessage, clearChat } from '../../../store/slices/chatSlice';
 import { Ionicons } from '@expo/vector-icons';
 import { matchmakingService } from '../../../services/api/matchmakingService';
 import { socketService } from '../../../services/api/socketService';
@@ -55,6 +58,8 @@ const LudoOnline = () => {
     const [matchmakingMessage, setMatchmakingMessage] = useState('Finding match...');
     const matchmakingIntervalRef = useRef<any>(null);
     const turnTimer = useRef<any>(null);
+    const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
+    const matchReadySentRef = useRef(false);
     const hasStartedMatchmaking = useRef(false);
 
     // --- Optimistic State Protection ---
@@ -209,11 +214,70 @@ const LudoOnline = () => {
                 }
             });
 
+            // 5. Chat Hooks
+            socketService.joinMatchChat(currentGame.id);
+
+            const unsubscribeChatHistory = socketService.onChatHistory((payload: any) => {
+                if (payload.matchId === currentGame.id) {
+                    dispatch(setHistory(payload.messages || []));
+                }
+            });
+
+            const unsubscribeChatMessage = socketService.onReceiveMatchMessage((payload: any) => {
+                dispatch(addMessage({
+                    message: payload,
+                    currentUserId: userProfile.id
+                }));
+            });
+
+            // 6. Match Ready Handshake - Emit MATCH_READY after UI is mounted
+            if (!matchReadySentRef.current) {
+                matchReadySentRef.current = true;
+                socketService.emitMatchReady(currentGame.id);
+            }
+
+            // 7. Listen for matchCountdown (3-2-1 before timer starts)
+            const unsubscribeCountdown = socketService.onMatchCountdown((data: any) => {
+                console.log('[LudoOnline] Match Countdown:', data);
+                let count = data.seconds || 3;
+                setCountdownSeconds(count);
+                const interval = setInterval(() => {
+                    count -= 1;
+                    if (count <= 0) {
+                        clearInterval(interval);
+                        setCountdownSeconds(null);
+                    } else {
+                        setCountdownSeconds(count);
+                    }
+                }, 1000);
+            });
+
+            // 8. Listen for matchCancelled (one player failed to ready up)
+            const unsubscribeCancelled = socketService.onMatchCancelled((data: any) => {
+                console.log('[LudoOnline] Match Cancelled:', data);
+                Alert.alert(
+                    'Match Cancelled',
+                    data.reason || 'The match was cancelled because a player failed to ready up.',
+                    [{
+                        text: 'OK', onPress: () => {
+                            dispatch(clearCurrentGame());
+                            (navigation as any).navigate('GameLobby', { gameId: 'ludo' });
+                        }
+                    }]
+                );
+            });
+
             return () => {
                 unsubscribe();
                 unsubscribeTurn();
                 unsubscribeEnded();
+                unsubscribeChatHistory();
+                unsubscribeChatMessage();
+                unsubscribeCountdown();
+                unsubscribeCancelled();
                 socketService.leaveGame(currentGame.id);
+                socketService.leaveMatchChat(currentGame.id);
+                dispatch(clearChat());
             };
         }
     }, [currentGame?.id, userProfile?.id]);
@@ -382,7 +446,7 @@ const LudoOnline = () => {
 
     const handleExit = () => {
         // If game is still in progress, show forfeit confirmation
-        if (currentGame && currentGame.status === 'IN_PROGRESS') {
+        if (currentGame && (currentGame.status === 'IN_PROGRESS' || (currentGame.status as string) === 'MATCHED')) {
             Alert.alert(
                 'Forfeit Match',
                 'If you forfeit, you will lose. Continue?',
@@ -413,6 +477,8 @@ const LudoOnline = () => {
         lastActionTimeRef.current = 0;
         gameOverProcessedRef.current = false;
         setTimerSync(null);
+        setCountdownSeconds(null);
+        matchReadySentRef.current = false;
         // Restart matchmaking — will show "Looking for Opponent" UI
         hasStartedMatchmaking.current = true;
         startAutomaticMatchmaking();
@@ -474,6 +540,14 @@ const LudoOnline = () => {
                     onGameOver={() => { }} // Handled by status in update
                 />
 
+                {/* Match Countdown Overlay */}
+                {countdownSeconds !== null && (
+                    <View style={styles.countdownOverlay}>
+                        <Text style={styles.countdownText}>{countdownSeconds}</Text>
+                        <Text style={styles.countdownLabel}>Get Ready!</Text>
+                    </View>
+                )}
+
                 {currentGame.status === 'COMPLETED' && (
                     <LudoGameOver
                         result={currentGame.winnerId === userProfile?.id ? "win" : "loss"}
@@ -486,6 +560,11 @@ const LudoOnline = () => {
                         isOnline={true}
                     />
                 )}
+
+                {/* Global Chat Overlay & Button */}
+                <ChatToggleButton />
+                <MatchChatOverlay matchId={currentGame.id} />
+
             </View>
         );
     };
@@ -511,6 +590,25 @@ const styles = StyleSheet.create({
     waitingSub: { color: '#ccc', marginTop: 10, fontSize: 16 },
     cancelButton: { marginTop: 50, padding: 15, borderWidth: 1, borderColor: '#d32f2f', borderRadius: 8 },
     cancelText: { color: '#ef5350' },
+    countdownOverlay: {
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        zIndex: 100
+    },
+    countdownText: {
+        color: '#4CAF50',
+        fontSize: 96,
+        fontWeight: 'bold'
+    },
+    countdownLabel: {
+        color: '#fff',
+        fontSize: 24,
+        marginTop: 10,
+        fontWeight: '600'
+    },
 });
 
 export default LudoOnline;

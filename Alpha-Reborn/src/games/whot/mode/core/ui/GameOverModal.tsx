@@ -55,6 +55,9 @@ const GameOverModal = ({
   // Guard: ensure reward dispatch fires exactly ONCE per game-over instance
   const hasDispatchedReward = useRef(false);
 
+  // Capture the initial playerRating so Redux updates don't change the display mid-view
+  const initialRatingRef = useRef(playerRating);
+
   const ONLINE_BATTLE_BONUS = 25;
   const ONLINE_WIN_PRIZE = 50;
   const ONLINE_LOSS_PENALTY = 50;
@@ -84,7 +87,7 @@ const GameOverModal = ({
           }
         }
 
-        const finalRating = playerRating + totalChange;
+        const finalRating = initialRatingRef.current + totalChange;
 
         setCalculatedData({
           levelReward: reward,
@@ -115,6 +118,8 @@ const GameOverModal = ({
       setCalculatedData(null);
       // Reset the guard so a NEW game-over can dispatch fresh rewards
       hasDispatchedReward.current = false;
+      // Re-capture the current playerRating for next game-over
+      initialRatingRef.current = playerRating;
     }
   }, [visible]);
 
@@ -192,7 +197,7 @@ const GameOverModal = ({
               <View style={styles.rewardRow}>
                 <Text style={styles.rewardLabel}>Rapid Rating</Text>
                 <Text style={[styles.rewardValue, styles.totalRewardValue]}>
-                  <Ionicons name="diamond" size={16} color="#FFD700" /> {playerRating} {bonus + levelReward >= 0 ? '+' : ''}{bonus + levelReward} = {finalRating}
+                  <Ionicons name="diamond" size={16} color="#FFD700" /> {initialRatingRef.current} {bonus + levelReward >= 0 ? '+' : ''}{bonus + levelReward} = {finalRating}
                 </Text>
               </View>
             </View>

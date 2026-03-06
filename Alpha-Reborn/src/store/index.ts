@@ -8,6 +8,7 @@ import authReducer from './slices/authSlice';
 import gameStatsReducer from './slices/gameStatsSlice';
 import onlineGameReducer from './slices/onlineGameSlice';
 import soundSettingsReducer from './slices/soundSettingsSlice';
+import chatReducer from './slices/chatSlice';
 
 const rootReducer = combineReducers({
   user: userReducer,
@@ -15,6 +16,7 @@ const rootReducer = combineReducers({
   gameStats: gameStatsReducer,
   onlineGame: onlineGameReducer,
   soundSettings: soundSettingsReducer,
+  chat: chatReducer,
 });
 
 const persistConfig = {

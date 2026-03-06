@@ -67,6 +67,37 @@ class SocketService {
             console.log('[SocketService] Received gameForfeit:', data);
             this.emitLocal('gameEnded', data); // Normalize to same event
         });
+
+        // Match Ready Handshake events
+        this.socket.on('matchCountdown', (data: any) => {
+            console.log('[SocketService] Received matchCountdown:', data);
+            this.emitLocal('matchCountdown', data);
+        });
+
+        this.socket.on('matchCancelled', (data: any) => {
+            console.log('[SocketService] Received matchCancelled:', data);
+            this.emitLocal('matchCancelled', data);
+        });
+
+        // Chat events
+        this.socket.on('receive_match_message', (data: any) => {
+            console.log('[SocketService] Received chat message:', data?.senderId);
+            this.emitLocal('receive_match_message', data);
+        });
+
+        this.socket.on('chat_history', (data: any) => {
+            console.log('[SocketService] Received chat history:', data?.messages?.length, 'messages');
+            this.emitLocal('chat_history', data);
+        });
+
+        this.socket.on('chat_status', (data: any) => {
+            this.emitLocal('chat_status', data);
+        });
+
+        this.socket.on('chat_error', (data: any) => {
+            console.warn('[SocketService] Chat error:', data?.message);
+            this.emitLocal('chat_error', data);
+        });
     }
 
     getSocket() {
@@ -188,6 +219,31 @@ class SocketService {
         return this.on('gameEnded', callback);
     }
 
+    // --- Match Ready Handshake ---
+
+    emitMatchReady(gameId: string) {
+        if (!this.socket) this.connect();
+
+        if (this.socket?.connected) {
+            console.log('[SocketService] Emitting MATCH_READY for game:', gameId);
+            this.socket.emit('MATCH_READY', { gameId });
+        } else {
+            console.log('[SocketService] Socket not connected, queuing MATCH_READY for:', gameId);
+            this.socket?.once('connect', () => {
+                console.log('[SocketService] Connected, executing queued MATCH_READY for:', gameId);
+                this.socket?.emit('MATCH_READY', { gameId });
+            });
+        }
+    }
+
+    onMatchCountdown(callback: (data: any) => void) {
+        return this.on('matchCountdown', callback);
+    }
+
+    onMatchCancelled(callback: (data: any) => void) {
+        return this.on('matchCancelled', callback);
+    }
+
     private on(event: string, callback: Function) {
         if (!this.listeners.has(event)) {
             this.listeners.set(event, []);
@@ -201,6 +257,54 @@ class SocketService {
                 this.listeners.set(event, callbacks.filter(cb => cb !== callback));
             }
         };
+    }
+
+    // --- Chat Service Management ---
+
+    joinMatchChat(matchId: string) {
+        if (!this.socket) this.connect();
+
+        if (this.socket?.connected) {
+            console.log('[SocketService] Joining chat room:', matchId);
+            this.socket.emit('join_match_chat', matchId);
+        } else {
+            console.log('[SocketService] Socket not connected, queuing join_match_chat for:', matchId);
+            this.socket?.once('connect', () => {
+                console.log('[SocketService] Connected, executing queued join_match_chat for:', matchId);
+                this.socket?.emit('join_match_chat', matchId);
+            });
+        }
+    }
+
+    sendMatchMessage(matchId: string, message: string) {
+        if (!this.socket?.connected) {
+            console.warn('[SocketService] Cannot send message, socket disconnected');
+            return;
+        }
+        console.log('[SocketService] Sending match message to:', matchId, 'message:', message);
+        this.socket.emit('send_match_message', { matchId, message });
+    }
+
+    leaveMatchChat(matchId: string) {
+        if (!this.socket?.connected) return;
+        console.log('[SocketService] Leaving chat room:', matchId);
+        this.socket.emit('leave_match_chat', matchId);
+    }
+
+    onChatStatus(callback: (data: any) => void) {
+        return this.on('chat_status', callback);
+    }
+
+    onChatHistory(callback: (data: any) => void) {
+        return this.on('chat_history', callback);
+    }
+
+    onReceiveMatchMessage(callback: (data: any) => void) {
+        return this.on('receive_match_message', callback);
+    }
+
+    onChatError(callback: (data: any) => void) {
+        return this.on('chat_error', callback);
     }
 
     private emitLocal(event: string, ...args: any[]) {
