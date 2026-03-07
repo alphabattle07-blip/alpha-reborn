@@ -20,6 +20,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: './Alpha-Reborn/package-lock.json'
 
       - name: Setup Expo CLI
         uses: expo/expo-github-action@v8
@@ -29,9 +30,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        working-directory: ./Alpha-Reborn
 
       - name: Build Android APK
         run: eas build --platform android --profile preview --non-interactive --local
+        working-directory: ./Alpha-Reborn
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
@@ -40,6 +43,6 @@ jobs:
         with:
           name: alpha-battle-apk
           path: |
-            *.apk
-            build-*.apk
+            Alpha-Reborn/*.apk
+            Alpha-Reborn/build-*.apk
           retention-days: 14
