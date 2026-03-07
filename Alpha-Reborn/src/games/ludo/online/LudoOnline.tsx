@@ -14,7 +14,7 @@ import { usePlayerProfile } from '../../../hooks/usePlayerProfile';
 import { LudoCoreUI } from '../core/ui/LudoCoreUI';
 import { LudoGameState, initializeGame } from '../core/ui/LudoGameLogic';
 import LudoGameOver from '../computer/LudoGameOver';
-import { ChatToggleButton } from '../../../components/chat/ChatToggleButton';
+import { MatchActionButtons } from '../../../components/chat/MatchActionButtons';
 import { MatchChatOverlay } from '../../../components/chat/MatchChatOverlay';
 import { setHistory, addMessage, clearChat } from '../../../store/slices/chatSlice';
 import { Ionicons } from '@expo/vector-icons';
@@ -561,8 +561,8 @@ const LudoOnline = () => {
                     />
                 )}
 
-                {/* Global Chat Overlay & Button */}
-                <ChatToggleButton />
+                {/* Global Match Actions (Challenge & Chat) */}
+                <MatchActionButtons />
                 <MatchChatOverlay matchId={currentGame.id} />
 
             </View>

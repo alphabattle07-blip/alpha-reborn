@@ -6,8 +6,11 @@ import {
   fetchGameState,
 } from '../../../../store/thunks/onlineGameThunks';
 import { clearCurrentGame, setCurrentGame } from '../../../../store/slices/onlineGameSlice';
+import { setHistory, addMessage, clearChat } from '../../../../store/slices/chatSlice';
 import { matchmakingService } from '../../../../services/api/matchmakingService';
 import WhotCoreUI from '../core/ui/WhotCoreUI';
+import { MatchActionButtons } from '../../../../components/chat/MatchActionButtons';
+import { MatchChatOverlay } from '../../../../components/chat/MatchChatOverlay';
 import { useWhotFonts } from '../core/ui/useWhotFonts';
 import { Card, CardSuit, GameState, WhotGameAction } from '../core/types';
 import { useSharedValue } from 'react-native-reanimated';
@@ -222,6 +225,7 @@ const WhotOnlineUI = () => {
       // If game is not in progress (COMPLETED, null, etc.), clear state and allow leaving
       if (!currentGame || currentGame.status !== 'IN_PROGRESS') {
         dispatch(clearCurrentGame());
+        dispatch(clearChat());
         return;
       }
 
@@ -316,6 +320,27 @@ const WhotOnlineUI = () => {
       socketService.register(userProfile.id);
       socketService.joinGame(currentGame.id);
 
+      // Join Match Chat
+      socketService.joinMatchChat(currentGame.id);
+
+      // --- CHAT HANDLERS ---
+      const unsubChatStatus = socketService.onChatStatus((data) => {
+        console.log("📡 [WhotOnline/Chat] Status:", data);
+      });
+
+      const unsubChatHistory = socketService.onChatHistory((data) => {
+        if (data.matchId === currentGame.id) {
+          dispatch(setHistory(data.messages));
+        }
+      });
+
+      const unsubMatchMessage = socketService.onReceiveMatchMessage((payload) => {
+        dispatch(addMessage({
+          message: payload,
+          currentUserId: userProfile.id
+        }));
+      });
+
       // ─── OPPONENT MOVE → ENQUEUE ANIMATION ───
       const unsubOpponentMove = socketService.onOpponentMove((action: any) => {
         console.log("📡 [WhotOnline] Received onOpponentMove event:", action.type);
@@ -360,6 +385,12 @@ const WhotOnlineUI = () => {
         unsubOpponentMove();
         unsubStateUpdate();
         unsubGameEnded();
+
+        unsubChatStatus();
+        unsubChatHistory();
+        unsubMatchMessage();
+
+        socketService.leaveMatchChat(currentGame.id);
         socketService.leaveGame(currentGame.id);
       };
     }
@@ -950,7 +981,7 @@ const WhotOnlineUI = () => {
         ]
       );
     } else {
-      dispatch(clearCurrentGame());
+      dispatch(clearChat());
       (navigation as any).navigate('GameLobby', { gameId: 'whot' });
     }
   };
@@ -958,6 +989,7 @@ const WhotOnlineUI = () => {
   const handleRematch = () => {
     // Clear current game from Redux
     dispatch(clearCurrentGame());
+    dispatch(clearChat());
     // Reset all animation/display state for a fresh session
     animationQueue.clear();
     setIsAnimating(false);
@@ -984,6 +1016,7 @@ const WhotOnlineUI = () => {
 
   const handleNewBattle = () => {
     dispatch(clearCurrentGame());
+    dispatch(clearChat());
     (navigation as any).navigate('GameLobby', { gameId: 'whot' });
   };
 
@@ -1050,65 +1083,69 @@ const WhotOnlineUI = () => {
   const opponent = isPlayer2 ? currentGame.player1 : currentGame.player2;
 
   return (
-    <WhotCoreUI
-      game={{
-        gameState: coreUIGameState!,
-        allCards: areCardsReadyToRender ? reconstructedAllCards : []
-      }}
-      playerState={{
-        name: userProfile?.name || 'You',
-        rating: getPlayerGameRating(userProfile),
-        handLength: displayedHand.length,
-        isCurrentPlayer: visualGameState.currentPlayer === 0,
-        avatar: userProfile?.avatar
-      }}
-      opponentState={{
-        name: opponent?.name || 'Opponent',
-        rating: getPlayerGameRating(opponent),
-        handLength: visualGameState.players?.[1]?.hand?.length || 0,
-        isCurrentPlayer: visualGameState.currentPlayer === 1,
-        isAI: false
-      }}
-      marketCardCount={visualGameState.market?.length || 0}
-      activeCalledSuit={visualGameState.calledSuit || null}
-      showSuitSelector={isSuitSelectorOpen || (visualGameState.pendingAction?.type === 'call_suit' && visualGameState.currentPlayer === 0)}
+    <>
+      <WhotCoreUI
+        game={{
+          gameState: coreUIGameState!,
+          allCards: areCardsReadyToRender ? reconstructedAllCards : []
+        }}
+        playerState={{
+          name: userProfile?.name || 'You',
+          rating: getPlayerGameRating(userProfile),
+          handLength: displayedHand.length,
+          isCurrentPlayer: visualGameState.currentPlayer === 0,
+          avatar: userProfile?.avatar
+        }}
+        opponentState={{
+          name: opponent?.name || 'Opponent',
+          rating: getPlayerGameRating(opponent),
+          handLength: visualGameState.players?.[1]?.hand?.length || 0,
+          isCurrentPlayer: visualGameState.currentPlayer === 1,
+          isAI: false
+        }}
+        marketCardCount={visualGameState.market?.length || 0}
+        activeCalledSuit={visualGameState.calledSuit || null}
+        showSuitSelector={isSuitSelectorOpen || (visualGameState.pendingAction?.type === 'call_suit' && visualGameState.currentPlayer === 0)}
 
-      // Dual-Tier Timer Props
-      turnStartTime={visualGameState.turnStartTime}
-      turnDuration={visualGameState.turnDuration}
-      warningYellowAt={visualGameState.warningYellowAt}
-      warningRedAt={visualGameState.warningRedAt}
-      serverTimeOffset={serverTimeOffset}
+        // Dual-Tier Timer Props
+        turnStartTime={visualGameState.turnStartTime}
+        turnDuration={visualGameState.turnDuration}
+        warningYellowAt={visualGameState.warningYellowAt}
+        warningRedAt={visualGameState.warningRedAt}
+        serverTimeOffset={serverTimeOffset}
 
-      isAnimating={isAnimating}
-      cardListRef={cardListRef}
-      onCardPress={onCardPress}
-      onFeedback={onFeedback}
-      onPickFromMarket={onPickFromMarket}
-      onPagingPress={handlePagingPress}
-      onSuitSelect={onSuitSelect}
-      onCardListReady={onCardListReady}
-      showPagingButton={displayedHand.length > playerHandLimit}
-      allCards={areCardsReadyToRender ? reconstructedAllCards : []}
-      playerHandIdsSV={playerHandIdsSV}
-      gameInstanceId={currentGame.id || 'whot-online'}
-      stableWidth={width}
-      stableHeight={height}
-      stableFont={stableFont}
-      stableWhotFont={stableWhotFont}
-      isLandscape={isLandscape}
-      gameOver={isGameCompleted ? {
-        winner: parsedWinnerObj,
-        onRematch: handleRematch,
-        onNewBattle: handleNewBattle,
-        level: 1 as any,
-        playerName: userProfile?.name || 'You',
-        opponentName: opponent?.name || 'Opponent',
-        playerRating: getPlayerGameRating(userProfile),
-        result: matchResult,
-        isOnline: true
-      } : null}
-    />
+        isAnimating={isAnimating}
+        cardListRef={cardListRef}
+        onCardPress={onCardPress}
+        onFeedback={onFeedback}
+        onPickFromMarket={onPickFromMarket}
+        onPagingPress={handlePagingPress}
+        onSuitSelect={onSuitSelect}
+        onCardListReady={onCardListReady}
+        showPagingButton={displayedHand.length > playerHandLimit}
+        allCards={areCardsReadyToRender ? reconstructedAllCards : []}
+        playerHandIdsSV={playerHandIdsSV}
+        gameInstanceId={currentGame.id || 'whot-online'}
+        stableWidth={width}
+        stableHeight={height}
+        stableFont={stableFont}
+        stableWhotFont={stableWhotFont}
+        isLandscape={isLandscape}
+        gameOver={isGameCompleted ? {
+          winner: parsedWinnerObj,
+          onRematch: handleRematch,
+          onNewBattle: handleNewBattle,
+          level: 1 as any,
+          playerName: userProfile?.name || 'You',
+          opponentName: opponent?.name || 'Opponent',
+          playerRating: getPlayerGameRating(userProfile),
+          result: matchResult,
+          isOnline: true
+        } : null}
+      />
+      <MatchActionButtons />
+      <MatchChatOverlay matchId={currentGame.id} />
+    </>
   );
 };
 

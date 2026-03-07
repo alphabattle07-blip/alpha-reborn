@@ -6,15 +6,23 @@ class SocketService {
     private gameId: string | null = null;
     private listeners: Map<string, Function[]> = new Map();
 
+    // Persistent state for reconnection
+    private userId: string | null = null;
+    private pendingMatchReadyGameId: string | null = null;
+    private chatMatchId: string | null = null;
+
     connect() {
         if (this.socket) return;
 
         console.log('[SocketService] Connecting to:', API_BASE_URL);
         this.socket = io(API_BASE_URL, {
-            transports: ['websocket'],
+            transports: ['polling', 'websocket'],
+            upgrade: true,
             reconnection: true,
-            reconnectionAttempts: 5,
+            reconnectionAttempts: Infinity,
             reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000,
         });
 
         this.setupBaseListeners();
@@ -25,9 +33,29 @@ class SocketService {
 
         this.socket.on('connect', () => {
             console.log('[SocketService] Connected:', this.socket?.id);
+
+            // Re-register user on every connect/reconnect
+            if (this.userId) {
+                console.log('[SocketService] Re-registering user:', this.userId);
+                this.socket?.emit('register', this.userId);
+            }
+
+            // Re-join game room
             if (this.gameId) {
                 console.log('[SocketService] Rejoining game on connect:', this.gameId);
-                this.joinGame(this.gameId); // Use method to ensure proper flow
+                this.socket?.emit('joinGame', this.gameId);
+            }
+
+            // Re-join chat room
+            if (this.chatMatchId) {
+                console.log('[SocketService] Rejoining chat room on connect:', this.chatMatchId);
+                this.socket?.emit('join_match_chat', this.chatMatchId);
+            }
+
+            // Re-emit MATCH_READY if pending
+            if (this.pendingMatchReadyGameId) {
+                console.log('[SocketService] Re-emitting MATCH_READY on connect:', this.pendingMatchReadyGameId);
+                this.socket?.emit('MATCH_READY', { gameId: this.pendingMatchReadyGameId });
             }
         });
 
@@ -41,13 +69,11 @@ class SocketService {
 
         // Opponent move handler
         this.socket.on('opponent-move', (move: any) => {
-            // console.log('[SocketService] Received opponent move:', move);
             this.emitLocal('opponent-move', move);
         });
 
-        // ✅ HANDLE FULL STATE SYNC as a potential "move" (for robustness)
+        // Game state sync
         this.socket.on('gameStateUpdate', (payload: any) => {
-            // console.log('[SocketService] Received Game State Update');
             const board = payload?.board || payload;
             const serverTime = payload?.serverTime;
             this.emitLocal('gameStateUpdate', board, serverTime);
@@ -65,23 +91,25 @@ class SocketService {
 
         this.socket.on('gameForfeit', (data: any) => {
             console.log('[SocketService] Received gameForfeit:', data);
-            this.emitLocal('gameEnded', data); // Normalize to same event
+            this.emitLocal('gameEnded', data);
         });
 
         // Match Ready Handshake events
         this.socket.on('matchCountdown', (data: any) => {
             console.log('[SocketService] Received matchCountdown:', data);
+            // Once countdown starts, clear the pending flag
+            this.pendingMatchReadyGameId = null;
             this.emitLocal('matchCountdown', data);
         });
 
         this.socket.on('matchCancelled', (data: any) => {
             console.log('[SocketService] Received matchCancelled:', data);
+            this.pendingMatchReadyGameId = null;
             this.emitLocal('matchCancelled', data);
         });
 
         // Chat events
         this.socket.on('receive_match_message', (data: any) => {
-            console.log('[SocketService] Received chat message:', data?.senderId);
             this.emitLocal('receive_match_message', data);
         });
 
@@ -118,10 +146,8 @@ class SocketService {
         } else if (this.socket.connected) {
             console.log('[SocketService] Joining game room:', gameId);
             this.socket.emit('joinGame', gameId);
-        } else {
-            // Already connecting/disconnected, will be handled by 'connect' listener
-            console.log('[SocketService] Socket not ready, will join on connect:', gameId);
         }
+        // If not connected, the 'connect' handler will handle it
     }
 
     leaveGame(gameId: string) {
@@ -130,6 +156,7 @@ class SocketService {
             this.socket.emit('leaveGame', gameId);
         }
         this.gameId = null;
+        this.pendingMatchReadyGameId = null;
     }
 
     emitForfeit(gameId: string) {
@@ -142,19 +169,14 @@ class SocketService {
     }
 
     register(userId: string) {
+        this.userId = userId; // Store for reconnects
         if (!this.socket) this.connect();
 
         if (this.socket?.connected) {
-            console.log('[SocketService] Registering user immediately:', userId);
+            console.log('[SocketService] Registering user:', userId);
             this.socket.emit('register', userId);
-        } else {
-            console.log('[SocketService] Socket not connected, queuing registration for:', userId);
-            // Use a one-time listener for the NEXT connect event
-            this.socket?.once('connect', () => {
-                console.log('[SocketService] Connected, executing queued registration for:', userId);
-                this.socket?.emit('register', userId);
-            });
         }
+        // If not connected, the 'connect' handler will handle it
     }
 
     emitMove(gameId: string, move: any) {
@@ -222,18 +244,14 @@ class SocketService {
     // --- Match Ready Handshake ---
 
     emitMatchReady(gameId: string) {
+        this.pendingMatchReadyGameId = gameId; // Store for reconnects
         if (!this.socket) this.connect();
 
         if (this.socket?.connected) {
             console.log('[SocketService] Emitting MATCH_READY for game:', gameId);
             this.socket.emit('MATCH_READY', { gameId });
-        } else {
-            console.log('[SocketService] Socket not connected, queuing MATCH_READY for:', gameId);
-            this.socket?.once('connect', () => {
-                console.log('[SocketService] Connected, executing queued MATCH_READY for:', gameId);
-                this.socket?.emit('MATCH_READY', { gameId });
-            });
         }
+        // If not connected, the 'connect' handler will handle it
     }
 
     onMatchCountdown(callback: (data: any) => void) {
@@ -262,18 +280,14 @@ class SocketService {
     // --- Chat Service Management ---
 
     joinMatchChat(matchId: string) {
+        this.chatMatchId = matchId; // Store for reconnects
         if (!this.socket) this.connect();
 
         if (this.socket?.connected) {
             console.log('[SocketService] Joining chat room:', matchId);
             this.socket.emit('join_match_chat', matchId);
-        } else {
-            console.log('[SocketService] Socket not connected, queuing join_match_chat for:', matchId);
-            this.socket?.once('connect', () => {
-                console.log('[SocketService] Connected, executing queued join_match_chat for:', matchId);
-                this.socket?.emit('join_match_chat', matchId);
-            });
         }
+        // If not connected, the 'connect' handler will handle it
     }
 
     sendMatchMessage(matchId: string, message: string) {
@@ -281,14 +295,16 @@ class SocketService {
             console.warn('[SocketService] Cannot send message, socket disconnected');
             return;
         }
-        console.log('[SocketService] Sending match message to:', matchId, 'message:', message);
+        console.log('[SocketService] Sending match message to:', matchId);
         this.socket.emit('send_match_message', { matchId, message });
     }
 
     leaveMatchChat(matchId: string) {
-        if (!this.socket?.connected) return;
-        console.log('[SocketService] Leaving chat room:', matchId);
-        this.socket.emit('leave_match_chat', matchId);
+        if (this.socket?.connected) {
+            console.log('[SocketService] Leaving chat room:', matchId);
+            this.socket.emit('leave_match_chat', matchId);
+        }
+        this.chatMatchId = null;
     }
 
     onChatStatus(callback: (data: any) => void) {
@@ -300,7 +316,10 @@ class SocketService {
     }
 
     onReceiveMatchMessage(callback: (data: any) => void) {
-        return this.on('receive_match_message', callback);
+        return this.on('receive_match_message', (payload) => {
+            console.log('[SocketService] Raw match message payload received:', JSON.stringify(payload, null, 2));
+            callback(payload);
+        });
     }
 
     onChatError(callback: (data: any) => void) {

@@ -10,6 +10,8 @@ import {
     Platform,
     FlatList,
     Keyboard,
+    SafeAreaView,
+    ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -25,7 +27,42 @@ export const MatchChatOverlay: React.FC<MatchChatOverlayProps> = ({ matchId }) =
     const { messages, isChatVisible } = useAppSelector(state => state.chat);
     const { profile } = useAppSelector(state => state.user);
     const [inputText, setInputText] = useState('');
+    const [isQuickChatOpen, setIsQuickChatOpen] = useState(false);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
     const listRef = useRef<FlatList>(null);
+
+    const QUICK_MESSAGES = [
+        "👋 Hi",
+        "🍀 Good luck",
+        "😄 Nice one",
+        "😅 Oops",
+        "🔥 Wow",
+        "😂 Haha",
+        "🤝 Good game"
+    ];
+
+    const handleQuickSend = (msg: string) => {
+        socketService.sendMatchMessage(matchId, msg);
+        setIsQuickChatOpen(false); // Close drawer after send
+    };
+
+    // Explicitly track keyboard size for 100% reliable positioning, especially on Android modals
+    useEffect(() => {
+        const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+        const showSub = Keyboard.addListener(showEvt, (e) => {
+            setKeyboardHeight(e.endCoordinates.height);
+        });
+        const hideSub = Keyboard.addListener(hideEvt, () => {
+            setKeyboardHeight(0);
+        });
+
+        return () => {
+            showSub.remove();
+            hideSub.remove();
+        };
+    }, []);
 
     // Auto-scroll to bottom when new messages arrive
     useEffect(() => {
@@ -50,16 +87,29 @@ export const MatchChatOverlay: React.FC<MatchChatOverlayProps> = ({ matchId }) =
 
     const renderMessage = ({ item }: { item: any }) => {
         const isMe = item.senderId === profile?.id;
-        const time = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        // Safely parse time, fallback to 'Now' if formatting totally failed
+        let timeStr = 'Now';
+        try {
+            if (item.timestamp) {
+                const date = new Date(item.timestamp);
+                if (!isNaN(date.getTime())) {
+                    timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                }
+            }
+        } catch (e) { }
+
+        // Fallback message string if nested weirdly
+        const msgText = typeof item.message === 'string' ? item.message : String(item.message || '');
 
         return (
             <View style={[styles.messageWrapper, isMe ? styles.messageWrapperMe : styles.messageWrapperOpponent]}>
                 <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOpponent]}>
                     <Text style={[styles.messageText, isMe ? styles.messageTextMe : styles.messageTextOpponent]}>
-                        {item.message}
+                        {msgText}
                     </Text>
                 </View>
-                <Text style={styles.timeText}>{time}</Text>
+                <Text style={styles.timeText}>{timeStr}</Text>
             </View>
         );
     };
@@ -71,14 +121,11 @@ export const MatchChatOverlay: React.FC<MatchChatOverlayProps> = ({ matchId }) =
             transparent={true}
             onRequestClose={handleClose}
         >
-            <View style={styles.overlayContainer}>
+            <View style={[styles.overlayContainer, { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 40 : 0 }]}>
                 {/* Touchable background to dismiss */}
                 <TouchableOpacity style={styles.backgroundDismiss} activeOpacity={1} onPress={handleClose} />
 
-                <KeyboardAvoidingView
-                    style={styles.chatContainer}
-                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                >
+                <View style={styles.chatContainer}>
                     {/* Header */}
                     <View style={styles.header}>
                         <Text style={styles.headerTitle}>Match Chat</Text>
@@ -90,6 +137,7 @@ export const MatchChatOverlay: React.FC<MatchChatOverlayProps> = ({ matchId }) =
                     {/* Message List */}
                     <FlatList
                         ref={listRef}
+                        style={{ flex: 1, zIndex: 1 }}
                         data={messages}
                         keyExtractor={(item, index) => item.id || index.toString()}
                         renderItem={renderMessage}
@@ -109,28 +157,46 @@ export const MatchChatOverlay: React.FC<MatchChatOverlayProps> = ({ matchId }) =
                     />
 
                     {/* Input Area */}
-                    <View style={styles.inputArea}>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Type a message..."
-                            placeholderTextColor="#888"
-                            value={inputText}
-                            onChangeText={setInputText}
-                            maxLength={300}
-                            multiline
-                        />
-                        <TouchableOpacity
-                            style={[
-                                styles.sendButton,
-                                (!inputText.trim() || inputText.length > 300) && styles.sendButtonDisabled
-                            ]}
-                            onPress={handleSend}
-                            disabled={!inputText.trim() || inputText.length > 300}
-                        >
-                            <Ionicons name="send" size={20} color="#fff" />
-                        </TouchableOpacity>
-                    </View>
-                </KeyboardAvoidingView>
+                    <SafeAreaView style={{ backgroundColor: '#252525', zIndex: 2 }}>
+                        {/* Quick Chat Drawer */}
+                        {isQuickChatOpen && (
+                            <View style={styles.quickChatContainer}>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickChatScroll}>
+                                    {QUICK_MESSAGES.map((msg, idx) => (
+                                        <TouchableOpacity key={idx} style={styles.quickChatPill} onPress={() => handleQuickSend(msg)}>
+                                            <Text style={styles.quickChatText}>{msg}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            </View>
+                        )}
+
+                        <View style={styles.inputArea}>
+                            <TouchableOpacity onPress={() => setIsQuickChatOpen(!isQuickChatOpen)} style={styles.quickChatToggle}>
+                                <Ionicons name={isQuickChatOpen ? "close-circle" : "flash"} size={26} color="#2ca444" />
+                            </TouchableOpacity>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Type a message..."
+                                placeholderTextColor="#888"
+                                value={inputText}
+                                onChangeText={setInputText}
+                                maxLength={300}
+                                multiline
+                            />
+                            <TouchableOpacity
+                                style={[
+                                    styles.sendButton,
+                                    (!inputText.trim() || inputText.length > 300) && styles.sendButtonDisabled
+                                ]}
+                                onPress={handleSend}
+                                disabled={!inputText.trim() || inputText.length > 300}
+                            >
+                                <Ionicons name="send" size={20} color="#fff" />
+                            </TouchableOpacity>
+                        </View>
+                    </SafeAreaView>
+                </View>
             </View>
         </Modal>
     );
@@ -228,7 +294,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         padding: 10,
-        paddingBottom: Platform.OS === 'ios' ? 25 : 10,
+        paddingBottom: Platform.OS === 'android' ? 20 : 10, // Additional bump for Android nav bar
         backgroundColor: '#252525',
         borderTopWidth: 1,
         borderTopColor: '#333',
@@ -237,24 +303,54 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#151515',
         color: '#fff',
-        borderRadius: 20,
+        borderRadius: 22,
         paddingHorizontal: 15,
-        paddingTop: 10,
-        paddingBottom: 10,
-        maxHeight: 100,
-        minHeight: 40,
+        paddingTop: Platform.OS === 'ios' ? 14 : 10,
+        paddingBottom: Platform.OS === 'ios' ? 14 : 10,
+        maxHeight: 120,
+        minHeight: 44, // Matches send button height to ensure perfect center alignment
         fontSize: 15,
+        textAlignVertical: 'center',
     },
     sendButton: {
         backgroundColor: '#2ca444',
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         justifyContent: 'center',
         alignItems: 'center',
         marginLeft: 10,
     },
     sendButtonDisabled: {
         backgroundColor: '#555',
-    }
+    },
+    quickChatToggle: {
+        marginRight: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    quickChatContainer: {
+        backgroundColor: '#202020',
+        paddingVertical: 12,
+        borderTopWidth: 1,
+        borderTopColor: '#333',
+    },
+    quickChatScroll: {
+        paddingHorizontal: 15,
+        alignItems: 'center',
+    },
+    quickChatPill: {
+        backgroundColor: '#333',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: '#444',
+        marginRight: 8,
+    },
+    quickChatText: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '500',
+    },
 });
