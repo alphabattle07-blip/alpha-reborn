@@ -29,6 +29,14 @@ const chatSlice = createSlice({
         },
         addMessage: (state, action: PayloadAction<{ message: ChatMessage; currentUserId: string }>) => {
             const { message, currentUserId } = action.payload;
+
+            // DEDUPLICATION: Check if message with this ID already exists to prevent UI duplicates
+            // and unique key warnings in React.
+            if (state.messages.some(m => m.id === message.id)) {
+                console.log(`[ChatSlice] Ignoring duplicate message ID: ${message.id}`);
+                return;
+            }
+
             state.messages.push(message);
 
             // If the chat is closed AND this message is from the opponent, bump unread

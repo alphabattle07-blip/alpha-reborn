@@ -272,7 +272,12 @@ class SocketService {
         return () => {
             const callbacks = this.listeners.get(event);
             if (callbacks) {
-                this.listeners.set(event, callbacks.filter(cb => cb !== callback));
+                const filtered = callbacks.filter(cb => cb !== callback);
+                if (filtered.length === 0) {
+                    this.listeners.delete(event);
+                } else {
+                    this.listeners.set(event, filtered);
+                }
             }
         };
     }
@@ -316,10 +321,12 @@ class SocketService {
     }
 
     onReceiveMatchMessage(callback: (data: any) => void) {
-        return this.on('receive_match_message', (payload) => {
+        // Create a stable wrapper so it can be un-subscribed correctly by reference
+        const wrapper = (payload: any) => {
             console.log('[SocketService] Raw match message payload received:', JSON.stringify(payload, null, 2));
             callback(payload);
-        });
+        };
+        return this.on('receive_match_message', wrapper);
     }
 
     onChatError(callback: (data: any) => void) {
