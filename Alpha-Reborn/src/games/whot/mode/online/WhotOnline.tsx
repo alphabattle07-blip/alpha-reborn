@@ -330,7 +330,7 @@ const WhotOnlineUI = () => {
 
       const unsubChatHistory = socketService.onChatHistory((data) => {
         if (data.matchId === currentGame.id) {
-          dispatch(setHistory(data.messages));
+          dispatch(setHistory(data.messages || []));
         }
       });
 
@@ -392,6 +392,7 @@ const WhotOnlineUI = () => {
 
         socketService.leaveMatchChat(currentGame.id);
         socketService.leaveGame(currentGame.id);
+        dispatch(clearChat());
       };
     }
   }, [currentGame?.id]);
@@ -1083,7 +1084,7 @@ const WhotOnlineUI = () => {
   const opponent = isPlayer2 ? currentGame.player1 : currentGame.player2;
 
   return (
-    <>
+    <View style={styles.gameContainer}>
       <WhotCoreUI
         game={{
           gameState: coreUIGameState!,
@@ -1145,12 +1146,13 @@ const WhotOnlineUI = () => {
       />
       <MatchActionButtons />
       <MatchChatOverlay matchId={currentGame.id} />
-    </>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#000' },
+  gameContainer: { flex: 1 },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { color: '#FFD700', marginTop: 15 },
   matchmakingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },

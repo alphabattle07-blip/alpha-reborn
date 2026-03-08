@@ -58,8 +58,6 @@ const LudoOnline = () => {
     const [matchmakingMessage, setMatchmakingMessage] = useState('Finding match...');
     const matchmakingIntervalRef = useRef<any>(null);
     const turnTimer = useRef<any>(null);
-    const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
-    const matchReadySentRef = useRef(false);
     const hasStartedMatchmaking = useRef(false);
 
     // --- Optimistic State Protection ---
@@ -230,42 +228,7 @@ const LudoOnline = () => {
                 }));
             });
 
-            // 6. Match Ready Handshake - Emit MATCH_READY after UI is mounted
-            if (!matchReadySentRef.current) {
-                matchReadySentRef.current = true;
-                socketService.emitMatchReady(currentGame.id);
-            }
-
-            // 7. Listen for matchCountdown (3-2-1 before timer starts)
-            const unsubscribeCountdown = socketService.onMatchCountdown((data: any) => {
-                console.log('[LudoOnline] Match Countdown:', data);
-                let count = data.seconds || 3;
-                setCountdownSeconds(count);
-                const interval = setInterval(() => {
-                    count -= 1;
-                    if (count <= 0) {
-                        clearInterval(interval);
-                        setCountdownSeconds(null);
-                    } else {
-                        setCountdownSeconds(count);
-                    }
-                }, 1000);
-            });
-
-            // 8. Listen for matchCancelled (one player failed to ready up)
-            const unsubscribeCancelled = socketService.onMatchCancelled((data: any) => {
-                console.log('[LudoOnline] Match Cancelled:', data);
-                Alert.alert(
-                    'Match Cancelled',
-                    data.reason || 'The match was cancelled because a player failed to ready up.',
-                    [{
-                        text: 'OK', onPress: () => {
-                            dispatch(clearCurrentGame());
-                            (navigation as any).navigate('GameLobby', { gameId: 'ludo' });
-                        }
-                    }]
-                );
-            });
+            // Instant game connection bypasses match countdown logic like Whot does
 
             return () => {
                 unsubscribe();
@@ -273,8 +236,6 @@ const LudoOnline = () => {
                 unsubscribeEnded();
                 unsubscribeChatHistory();
                 unsubscribeChatMessage();
-                unsubscribeCountdown();
-                unsubscribeCancelled();
                 socketService.leaveGame(currentGame.id);
                 socketService.leaveMatchChat(currentGame.id);
                 dispatch(clearChat());
@@ -477,8 +438,6 @@ const LudoOnline = () => {
         lastActionTimeRef.current = 0;
         gameOverProcessedRef.current = false;
         setTimerSync(null);
-        setCountdownSeconds(null);
-        matchReadySentRef.current = false;
         // Restart matchmaking — will show "Looking for Opponent" UI
         hasStartedMatchmaking.current = true;
         startAutomaticMatchmaking();
@@ -540,13 +499,6 @@ const LudoOnline = () => {
                     onGameOver={() => { }} // Handled by status in update
                 />
 
-                {/* Match Countdown Overlay */}
-                {countdownSeconds !== null && (
-                    <View style={styles.countdownOverlay}>
-                        <Text style={styles.countdownText}>{countdownSeconds}</Text>
-                        <Text style={styles.countdownLabel}>Get Ready!</Text>
-                    </View>
-                )}
 
                 {currentGame.status === 'COMPLETED' && (
                     <LudoGameOver
