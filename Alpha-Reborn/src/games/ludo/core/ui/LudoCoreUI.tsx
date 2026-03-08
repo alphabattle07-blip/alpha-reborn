@@ -152,6 +152,12 @@ type LudoGameProps = {
     };
 };
 
+// --- Dice Positioning Configuration ---
+const DICE_POS_CONFIG = {
+    blue: { x: 0.385, y: 0.800 },   // Final Position: 0.800
+    green: { x: 0.600, y: 0.270 },  // Final Position: 0.270
+};
+
 export const LudoCoreUI: React.FC<LudoGameProps> = ({
     gameState: propGameState,
     player: propPlayer,
@@ -327,11 +333,6 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
         }
     }, [gameState, onMove]);
 
-    // --- Dice Positioning Configuration ---
-    const DICE_POS_CONFIG = {
-        blue: { x: 0.385, y: 0.770 },   // P1 (User)
-        green: { x: 0.617, y: 0.276 },  // P2 (AI)
-    };
 
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 

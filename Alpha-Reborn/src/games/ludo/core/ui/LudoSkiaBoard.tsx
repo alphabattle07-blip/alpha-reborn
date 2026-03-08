@@ -17,9 +17,9 @@ const yellowImageSource = require('../../../../assets/images/yellow.png');
 // Adjusted to be outside the board but flush against the edges
 const COLOR_IMAGE_POSITIONS = {
     red: { x: 0.1090, y: 0.009 },    // Left side
-    green: { x: 0.740, y: 0.00000001 },  // Top side
+    green: { x: 0.740, y: -0.05 },  // Moved up from 0
     yellow: { x: 0.670, y: 0.850 }, // Right side
-    blue: { x: 0.0190, y: 0.8550 },   // Bottom side
+    blue: { x: 0.0190, y: 0.8850 },   // Moved up slightly to avoid canvas clipping
 };
 
 // Distinct positions for 4 seeds in each home base
@@ -33,10 +33,11 @@ const HOME_SEED_POSITIONS = {
         { x: 0.1090 + HOME_OFFSET, y: 0.009 + HOME_OFFSET },
     ],
     green: [
-        { x: 0.814 - HOME_OFFSET, y: 0.103 - HOME_OFFSET },
-        { x: 0.814 + HOME_OFFSET, y: 0.103 - HOME_OFFSET },
-        { x: 0.915 - HOME_OFFSET, y: 0.052 + HOME_OFFSET },
-        { x: 0.917 + HOME_OFFSET, y: 0.052 + HOME_OFFSET },
+        // Aligned X around 0.740 and moved Y up to ~0.025
+        { x: 0.740 - HOME_OFFSET, y: 0.025 - HOME_OFFSET },
+        { x: 0.740 + HOME_OFFSET, y: 0.025 - HOME_OFFSET },
+        { x: 0.740 - HOME_OFFSET, y: 0.025 + HOME_OFFSET },
+        { x: 0.740 + HOME_OFFSET, y: 0.025 + HOME_OFFSET },
     ],
     yellow: [
         { x: 0.670 - HOME_OFFSET, y: 0.850 - HOME_OFFSET },
@@ -45,12 +46,11 @@ const HOME_SEED_POSITIONS = {
         { x: 0.670 + HOME_OFFSET, y: 0.850 + HOME_OFFSET },
     ],
     blue: [
-        // Tweaked Blue positions to be slightly better centered if needed
-        // Keeping symmetrical for now, but editable
-        { x: 0.2490 - HOME_OFFSET, y: 0.9590 - HOME_OFFSET },
-        { x: 0.1500 + HOME_OFFSET, y: 0.9590 - HOME_OFFSET },
-        { x: 0.1500 - HOME_OFFSET, y: 0.9080 + HOME_OFFSET },
-        { x: 0.0480 + HOME_OFFSET, y: 0.9080 + HOME_OFFSET },
+        // Adjusted Y to match new Blue image position (0.88)
+        { x: 0.2490 - HOME_OFFSET, y: 0.9090 - HOME_OFFSET },
+        { x: 0.1500 + HOME_OFFSET, y: 0.9090 - HOME_OFFSET },
+        { x: 0.1500 - HOME_OFFSET, y: 0.8580 + HOME_OFFSET },
+        { x: 0.0480 + HOME_OFFSET, y: 0.8580 + HOME_OFFSET },
     ],
 };
 
@@ -286,22 +286,23 @@ const getSeedPixelPosition = (seedPos: number, playerId: string, seedSubIndex: n
     return base;
 };
 
-export const LudoSkiaBoard = ({ onBoardPress, positions, level }: { onBoardPress: any, positions: { [key: string]: { pos: number, land: number, delay: number, isActive: boolean }[] }, level?: number }) => {
+export const LudoSkiaBoard = ({ onBoardPress, positions, level, width: propWidth, height: propHeight }: { onBoardPress: any, positions: { [key: string]: { pos: number, land: number, delay: number, isActive: boolean }[] }, level?: number, width?: number, height?: number }) => {
     const boardImage = useImage(boardImageSource);
     const blueImage = useImage(blueImageSource);
     const greenImage = useImage(greenImageSource);
     const redImage = useImage(redImageSource);
     const yellowImage = useImage(yellowImageSource);
 
-    const { width } = useWindowDimensions();
-    const canvasWidth = width * 0.95;
-    const canvasHeight = canvasWidth * 1.2; // Increase height to give more room top/bottom
+    const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+    const canvasWidth = propWidth ?? (windowWidth * 0.95);
+    const canvasHeight = propHeight ?? (canvasWidth * 1.2); // Increase height to give more room top/bottom
 
     // Scale board to make room for outer images
     // Using BOARD_SCALE constant
     const boardSize = canvasWidth * BOARD_SCALE;
     const marginX = (canvasWidth - boardSize) / 2;
     const marginY = (canvasHeight - boardSize) / 2;
+    // Add additional vertical margin as requested (10px above and below)
     const boardX = marginX;
     const boardY = marginY;
 
