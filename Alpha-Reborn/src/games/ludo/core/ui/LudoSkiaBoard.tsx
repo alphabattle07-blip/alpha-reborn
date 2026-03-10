@@ -228,6 +228,9 @@ const AnimatedSeed = ({ id, playerId, seedSubIndex, currentPos, landingPos, anim
     const origin = useDerivedValue(() => ({ x: cx.value, y: cy.value }));
     const indicatorScale = useDerivedValue(() => 1 + pulse.value * 0.4);
     const indicatorOpacity = useDerivedValue(() => pulse.value);
+    // Extracted from inline JSX to prevent GPU memory leak (hooks must not be called inside JSX)
+    const pulseRadius = useDerivedValue(() => radius * (1.2 + pulse.value * 0.5));
+    const pulseOpacity = useDerivedValue(() => (1 - pulse.value) * 0.5);
 
     return (
         <Group>
@@ -236,7 +239,7 @@ const AnimatedSeed = ({ id, playerId, seedSubIndex, currentPos, landingPos, anim
                 <Circle cx={cx} cy={cy} r={radius * 1.5} color={color}>
                     <Paint style="stroke" strokeWidth={2} color={color} />
                 </Circle>
-                <Circle cx={cx} cy={cy} r={useDerivedValue(() => radius * (1.2 + pulse.value * 0.5))} color={color} opacity={useDerivedValue(() => (1 - pulse.value) * 0.5)}>
+                <Circle cx={cx} cy={cy} r={pulseRadius} color={color} opacity={pulseOpacity}>
                     <Paint style="stroke" strokeWidth={1} color={color} />
                 </Circle>
             </Group>
@@ -290,8 +293,8 @@ export const LudoSkiaBoard = ({ onBoardPress, positions, level, width: propWidth
     const boardImage = useImage(boardImageSource);
     const blueImage = useImage(blueImageSource);
     const greenImage = useImage(greenImageSource);
-    const redImage = useImage(redImageSource);
-    const yellowImage = useImage(yellowImageSource);
+    // Removed: redImage and yellowImage were loaded but never rendered (JSX commented out),
+    // wasting GPU texture memory and contributing to board corruption on Android.
 
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
     const canvasWidth = propWidth ?? (windowWidth * 0.95);

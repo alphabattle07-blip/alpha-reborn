@@ -14,6 +14,7 @@ import {
     useSharedValue,
     withSequence,
     withTiming,
+    withRepeat,
     Easing,
     useDerivedValue,
 } from 'react-native-reanimated';
@@ -22,6 +23,7 @@ interface Ludo3DDieProps {
     value: number;
     size?: number;
     isUsed?: boolean;
+    isRolling?: boolean; // Indefinite spin mode (waiting for server result)
     style?: ViewStyle;
 }
 
@@ -29,6 +31,7 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
     value,
     size = 40,
     isUsed = false,
+    isRolling = false,
     style,
 }) => {
     // Measurements
@@ -46,33 +49,67 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
     const scale = useSharedValue(1);
 
     // Ref to manage the timeout loop for cleanup
-    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
+        // --- INDEFINITE ROLLING MODE ---
+        // When isRolling is true and no real value yet, spin indefinitely
+        if (isRolling && value <= 0) {
+            // Continuously looping bounce — never settles until real value arrives
+            bounce.value = withRepeat(
+                withSequence(
+                    withTiming(-size * 0.5, { duration: 400, easing: Easing.out(Easing.quad) }),
+                    withTiming(0, { duration: 400, easing: Easing.in(Easing.quad) }),
+                    withTiming(-size * 0.2, { duration: 250, easing: Easing.out(Easing.quad) }),
+                    withTiming(0, { duration: 250, easing: Easing.bounce })
+                ),
+                -1
+            );
+            rotation.value = withRepeat(
+                withTiming(Math.PI * 2, { duration: 800, easing: Easing.linear }),
+                -1
+            );
+            scale.value = withRepeat(
+                withSequence(
+                    withTiming(1.1, { duration: 400 }),
+                    withTiming(1, { duration: 400 })
+                ),
+                -1
+            );
+
+            // Face switching loop — runs until cleanup
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            const rollFace = () => {
+                setInternalValue(prev => {
+                    let next;
+                    do { next = Math.floor(Math.random() * 6) + 1; } while (next === prev);
+                    return next;
+                });
+                timeoutRef.current = setTimeout(rollFace, 80 + Math.random() * 40);
+            };
+            rollFace();
+
+            return () => {
+                if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            };
+        }
+
         // GUARD: If the die is already used or value is 0, DO NOT animate.
-        // This prevents re-rolling when the component remounts or receives unrelated updates.
         if (isUsed || value <= 0) {
             setInternalValue(value);
-            // Reset physics to rest state immediately
             bounce.value = 0;
             rotation.value = 0;
             scale.value = 1;
             return;
         }
 
-        // --- Start Animation Sequence ---
-        // (Only runs for valid, unused, new rolls)
-
-        // 1. Reset Physics
+        // --- Normal Animation Sequence (value arrived) ---
         bounce.value = 0;
         rotation.value = 0;
         scale.value = 1;
 
-        const TOTAL_DURATION = 1000; // 1 second total roll time
+        const TOTAL_DURATION = 1000;
 
-        // 2. Physics Animation (Reanimated)
-
-        // Bounce: Hop Up High -> Drop -> Settle Bounce
         bounce.value = withSequence(
             withTiming(-size * 0.8, { duration: TOTAL_DURATION * 0.3, easing: Easing.out(Easing.quad) }),
             withTiming(0, { duration: TOTAL_DURATION * 0.3, easing: Easing.in(Easing.quad) }),
@@ -82,44 +119,35 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
             )
         );
 
-        // Rotation: Spin 360 degrees (2 PI)
         rotation.value = withTiming(Math.PI * 2, {
             duration: TOTAL_DURATION * 0.8,
             easing: Easing.out(Easing.cubic)
         });
 
-        // Scale: Slight breath
         scale.value = withSequence(
             withTiming(1.1, { duration: TOTAL_DURATION * 0.3 }),
             withTiming(1, { duration: TOTAL_DURATION * 0.7 })
         );
 
-        // 3. Face Switching Logic (JS Loop)
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
         let elapsedTime = 0;
-        let currentDelay = 50; // Start fast (50ms)
+        let currentDelay = 50;
 
         const rollFace = () => {
-            // If duration exceeded, settle on the FINAL value
             if (elapsedTime >= TOTAL_DURATION) {
                 setInternalValue(value);
                 return;
             }
 
-            // Show a random face (1-6) ensuring it's different from previous
             setInternalValue(prev => {
                 let next;
-                do {
-                    next = Math.floor(Math.random() * 6) + 1;
-                } while (next === prev);
+                do { next = Math.floor(Math.random() * 6) + 1; } while (next === prev);
                 return next;
             });
 
-            // Increase elapsed time and slow down loop (simulate friction)
             elapsedTime += currentDelay;
             currentDelay = Math.min(currentDelay * 1.2, 250);
-
             timeoutRef.current = setTimeout(rollFace, currentDelay);
         };
 
@@ -128,7 +156,7 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
         return () => {
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
         };
-    }, [value, size, isUsed]); // Dependency ensures this runs when value updates
+    }, [value, size, isUsed, isRolling]);
 
     // Derived transform for the Skia Group
     const transform = useDerivedValue(() => [

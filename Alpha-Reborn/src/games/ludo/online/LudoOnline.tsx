@@ -12,7 +12,7 @@ import {
 import { clearCurrentGame, setCurrentGame } from '../../../store/slices/onlineGameSlice';
 import { usePlayerProfile } from '../../../hooks/usePlayerProfile';
 import { LudoCoreUI } from '../core/ui/LudoCoreUI';
-import { LudoGameState, initializeGame } from '../core/ui/LudoGameLogic';
+import { LudoGameState, initializeGame, applyMove } from '../core/ui/LudoGameLogic';
 import LudoGameOver from '../computer/LudoGameOver';
 import { MatchActionButtons } from '../../../components/chat/MatchActionButtons';
 import { MatchChatOverlay } from '../../../components/chat/MatchChatOverlay';
@@ -340,7 +340,6 @@ const LudoOnline = () => {
                     pendingStateRef.current = null;
                 } else {
                     // Server is still behind. Ignore server state and use our pending state.
-                    console.log("[LudoOnline] Ignoring outdated server state (Rubber-banding protection)");
                     return pendingStateRef.current;
                 }
             }
@@ -358,13 +357,11 @@ const LudoOnline = () => {
 
         // Strict Turn Validation
         if (visualGameState.currentPlayerIndex !== 0) {
-            console.log("[LudoOnline] Action ignored: Not your turn to roll");
             return;
         }
 
         // protection against fast taps / double rolls
         if (Date.now() - lastActionTimeRef.current < 1000) {
-            console.log("[LudoOnline] Action ignored: Too fast / duplicate roll");
             return;
         }
         lastActionTimeRef.current = Date.now();
@@ -381,15 +378,20 @@ const LudoOnline = () => {
 
         // Strict Turn Validation
         if (visualGameState.currentPlayerIndex !== 0) {
-            console.log("[LudoOnline] Action ignored: Not your turn to move");
             return;
         }
 
         lastActionTimeRef.current = Date.now();
 
+        // Store optimistic state so rubber-banding keeps showing our local animation
+        const optimisticState = applyMove(visualGameState, move);
+        pendingStateRef.current = optimisticState;
+
         try {
             socketService.emitAction(currentGame.id, 'ludo', { type: 'MOVE_PIECE', move: move });
         } catch (error) {
+            // If emit fails, clear pending state to revert to server state
+            pendingStateRef.current = null;
             console.error("Failed to emit move", error);
         }
     };

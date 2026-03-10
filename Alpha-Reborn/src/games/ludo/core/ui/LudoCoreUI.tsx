@@ -77,6 +77,7 @@ const DiceHouse = ({
     waitingForRoll,
     rankIcon,
     disabled,
+    isRolling,
     timerProps
 }: {
     dice: number[],
@@ -85,6 +86,7 @@ const DiceHouse = ({
     waitingForRoll: boolean,
     rankIcon: string,
     disabled?: boolean,
+    isRolling?: boolean,
     timerProps?: {
         isActive: boolean;
         turnStartTime?: number;
@@ -96,6 +98,8 @@ const DiceHouse = ({
 }) => {
     const timerBorderColor = useLudoTimerColor(timerProps);
     const hasTimer = timerProps?.isActive;
+    // Determine dice count for rolling placeholder (1 die for level < 3, 2 for >= 3)
+    const rollingDiceCount = dice?.length > 0 ? dice.length : 1;
 
     return (
         <View style={{ width: 100, height: 100, alignItems: 'center', justifyContent: 'center' }}>
@@ -105,11 +109,21 @@ const DiceHouse = ({
                     hasTimer && { borderColor: timerBorderColor, borderWidth: 3 }
                 ]}
                 onPress={onPress}
-                disabled={disabled || !waitingForRoll}
+                disabled={disabled || !waitingForRoll || isRolling}
                 activeOpacity={0.8}
             >
                 <View style={styles.diceRow}>
-                    {dice?.length > 0 ? (
+                    {isRolling ? (
+                        // Optimistic rolling: show spinning dice immediately
+                        Array.from({ length: rollingDiceCount }).map((_, i) => (
+                            <Ludo3DDie
+                                key={`rolling-${i}`}
+                                value={0}
+                                size={35}
+                                isRolling={true}
+                            />
+                        ))
+                    ) : dice?.length > 0 ? (
                         (dice || []).map((d, i) => (
                             <Ludo3DDie
                                 key={i}
@@ -123,7 +137,7 @@ const DiceHouse = ({
                     )}
                 </View>
 
-                {waitingForRoll && (
+                {waitingForRoll && !isRolling && (
                     <View style={styles.diceOverlay}>
                         <Text style={styles.rankIconOverlay}>{rankIcon}</Text>
                     </View>
@@ -214,7 +228,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
             });
         });
         return posMap;
-    }, [gameState]);
+    }, [gameState.players, gameState.currentPlayerIndex, gameState.waitingForRoll, gameState.dice, gameState.winner]);
 
     useEffect(() => {
         if (gameState.winner) {
@@ -228,13 +242,24 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     const playerRank = useMemo(() => getRankFromRating(player.rating || 1200) || { icon: '🌱' }, [player.rating]);
     const opponentRank = useMemo(() => getRankFromRating(opponent.rating || 1500) || { icon: '🌱' }, [opponent.rating]);
 
+    // --- Optimistic Dice Rolling State (Online only) ---
+    const [isRolling, setIsRolling] = useState(false);
+
+    // Clear isRolling when real dice values arrive from server
+    useEffect(() => {
+        if (isRolling && !gameState.waitingForRoll && gameState.dice.length > 0) {
+            setIsRolling(false);
+        }
+    }, [isRolling, gameState.waitingForRoll, gameState.dice]);
+
+    // Reset isRolling on turn change (e.g. opponent's turn)
+    useEffect(() => {
+        setIsRolling(false);
+    }, [gameState.currentPlayerIndex]);
+
     // --- Handlers ---
     const handleRollDice = useCallback(() => {
         if (gameState.winner) return;
-        // Strict turn validation: only allow roll if it's the current player's turn
-        // In local computer games (no onMove prop), player is index 0.
-        // We allow the roll if it's player 0's turn, OR if it's a computer game (onMove is undefined)
-        // and it's player 1's turn (the computer).
         const isPlayerTurn = gameState.currentPlayerIndex === 0;
         const isComputerTurn = !onMove && gameState.currentPlayerIndex === 1;
 
@@ -243,10 +268,11 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
         }
 
         if (onRoll) {
-            // Online mode: Delegate intent to parent (LudoOnline)
+            // Online mode: Start optimistic rolling animation immediately
+            setIsRolling(true);
             onRoll(gameState);
         } else {
-            // Local computer game: Apply immediately
+            // Local computer game: Apply immediately (no optimistic needed)
             const newState = rollDice(gameState);
             setGameState(newState);
         }
@@ -306,8 +332,6 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
 
     const handleBoardPress = useCallback((x: number, y: number, tappedSeed?: { playerId: string; seedIndex: number; position: number } | null) => {
         if (tappedSeed) {
-            // In online mode, we still map 'p1' to the local interactor.
-            // LudoOnline will handle mapping logical players to p1/p2.
             if (tappedSeed.playerId !== 'p1') return;
             if (gameState.currentPlayerIndex !== 0) return;
 
@@ -315,15 +339,13 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                 const moves = getValidMoves(gameState);
                 const matchingMove = moves.find(move => move.seedIndex === tappedSeed.seedIndex);
                 if (matchingMove) {
+                    // Apply move locally FIRST for instant animation
+                    const newState = applyMove(gameState, matchingMove);
+                    setGameState(newState);
+
                     if (onMove) {
-                        // In online mode, LudoOnline expects the intent (the move object)
-                        // In offline mode, the parent doesn't need it or expects state, but we can standardise
-                        // Since LudoOnline.tsx expects a move now:
+                        // Online mode: also emit to server (server validates & broadcasts)
                         onMove(matchingMove as any);
-                    } else {
-                        // Local computer game: apply immediately
-                        const newState = applyMove(gameState, matchingMove);
-                        setGameState(newState);
                     }
                 }
             }
@@ -392,6 +414,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                         onPress={handleRollDice}
                         rankIcon={gameState.currentPlayerIndex === 0 ? playerRank.icon : opponentRank.icon}
                         disabled={gameState.currentPlayerIndex !== 0}
+                        isRolling={isRolling}
                         timerProps={timerSync ? {
                             isActive: true,
                             ...timerSync
