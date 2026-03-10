@@ -42,6 +42,23 @@ const GameCard: React.FC<{ item: Game; onPress: () => void; }> = ({ item, onPres
   </View>
 );
 
+// Guard against native module not being compiled in the dev client build
+let BannerAd: any = null;
+let BannerAdSize: any = null;
+let TestIds: any = null;
+try {
+  const mobileAds = require('react-native-google-mobile-ads');
+  BannerAd = mobileAds.BannerAd;
+  BannerAdSize = mobileAds.BannerAdSize;
+  TestIds = mobileAds.TestIds;
+} catch (e) {
+  // Native module not available in this build (e.g. Expo Go / dev client without ads)
+}
+
+const adUnitId = TestIds
+  ? (__DEV__ ? TestIds.ADAPTIVE_BANNER : 'ca-app-pub-3892796629709741/2201021145')
+  : null;
+
 function GamesScreen() {
   const { width } = useWindowDimensions();
   const navigation = useNavigation<any>();
@@ -69,6 +86,18 @@ function GamesScreen() {
         numColumns={2}
         contentContainerStyle={styles.grid}
       />
+
+      <View style={styles.adContainer}>
+        {BannerAd && adUnitId && (
+          <BannerAd
+            unitId={adUnitId}
+            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+            requestOptions={{
+              requestNonPersonalizedAdsOnly: true,
+            }}
+          />
+        )}
+      </View>
     </LinearGradient>
   );
 }
@@ -151,5 +180,11 @@ const styles = StyleSheet.create({
   playButtonText: {
     color: '#000000',
     fontWeight: 'bold',
+  },
+  adContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    backgroundColor: 'transparent',
   },
 });

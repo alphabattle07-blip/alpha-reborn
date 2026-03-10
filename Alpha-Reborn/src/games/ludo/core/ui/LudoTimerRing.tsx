@@ -40,7 +40,6 @@ export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
 
         setOpacity(1);
 
-        console.log("[LudoTimerRing] Active:", { isActive, turnStartTime, turnDuration, yellowAt, redAt });
         const checkColor = () => {
             const currentServerTime = Date.now() - serverTimeOffset;
             const elapsed = currentServerTime - turnStartTime;

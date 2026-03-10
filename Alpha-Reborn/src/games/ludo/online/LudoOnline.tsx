@@ -66,6 +66,9 @@ const LudoOnline = () => {
     const lastActionTimeRef = useRef<number>(0);
     // Guard: track if game-over has been processed to stop polling/socket updates
     const gameOverProcessedRef = useRef(false);
+    // Ref to always hold the latest currentGame — prevents stale closures in socket listeners
+    const currentGameRef = useRef(currentGame);
+    useEffect(() => { currentGameRef.current = currentGame; }, [currentGame]);
     const [timerSync, setTimerSync] = useState<{
         turnStartTime?: number;
         turnDuration?: number;
@@ -188,7 +191,6 @@ const LudoOnline = () => {
 
             // 3. Listen for turn starts (Timer Sync)
             const unsubscribeTurn = socketService.onTurnStarted((data: any) => {
-                console.log("[LudoOnline] Turn Started Event:", data);
                 setTimerSync({
                     turnStartTime: data.turnStartTime || (data.serverTime - (data.timeLimit - (data.remainingTime || data.timeLimit))),
                     turnDuration: data.timeLimit,
@@ -200,12 +202,12 @@ const LudoOnline = () => {
 
             // 4. Listen for game ended (forfeit, normal win)
             const unsubscribeEnded = socketService.onGameEnded((data: any) => {
-                console.log("[LudoOnline] Game Ended Event:", data);
-                if (data?.winnerId && currentGame) {
+                const latestGame = currentGameRef.current;
+                if (data?.winnerId && latestGame) {
                     // Immediately block polling/socket updates
                     gameOverProcessedRef.current = true;
                     dispatch(setCurrentGame({
-                        ...currentGame,
+                        ...latestGame,
                         status: 'COMPLETED',
                         winnerId: data.winnerId
                     }));

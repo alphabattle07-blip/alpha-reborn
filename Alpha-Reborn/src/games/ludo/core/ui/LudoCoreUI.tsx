@@ -220,7 +220,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
         if (gameState.winner) {
             onGameOver?.(gameState.winner);
         }
-    }, [gameState.currentPlayerIndex, gameState.winner, onGameOver]);
+    }, [gameState.winner, onGameOver]);
 
     const p1Score = useMemo(() => gameState.players[0].seeds.filter(s => s.position === 56).length, [gameState.players[0].seeds]);
     const p2Score = useMemo(() => gameState.players[1].seeds.filter(s => s.position === 56).length, [gameState.players[1].seeds]);
@@ -239,7 +239,6 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
         const isComputerTurn = !onMove && gameState.currentPlayerIndex === 1;
 
         if (!isPlayerTurn && !isComputerTurn) {
-            console.log("[LudoCoreUI] Prevented roll: Not authorized for current player");
             return;
         }
 
@@ -249,7 +248,6 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
         } else {
             // Local computer game: Apply immediately
             const newState = rollDice(gameState);
-            console.log("[LudoCoreUI] Dice rolled:", newState.dice);
             setGameState(newState);
         }
     }, [gameState, onRoll, onMove]);
@@ -267,7 +265,6 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
         if (canAutoPass) {
             const moves = getValidMoves(gameState);
             if (moves.length === 0) {
-                console.log(`[LudoCoreUI] No moves available. Auto-passing turn after delay for player ${gameState.currentPlayerIndex}`);
                 const timer = setTimeout(() => {
                     if (onPassTurn) {
                         onPassTurn();
@@ -279,7 +276,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                 return () => clearTimeout(timer);
             }
         }
-    }, [gameState, gameState.dice, gameState.diceUsed, gameState.waitingForRoll, onMove, onPassTurn]);
+    }, [gameState.waitingForRoll, gameState.winner, gameState.currentPlayerIndex, onMove, onPassTurn]);
 
     // AI Turn Loop
     useEffect(() => {
