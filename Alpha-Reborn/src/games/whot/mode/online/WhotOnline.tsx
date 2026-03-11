@@ -511,6 +511,10 @@ const WhotOnlineUI = () => {
 
   }, [currentGame?.board, userProfile?.id, localHandOrder]);
 
+  // Fix 1: Ref for animation closures — always reads the latest visualGameState
+  const visualGameStateRef = useRef(visualGameState);
+  useEffect(() => { visualGameStateRef.current = visualGameState; }, [visualGameState]);
+
   // Keep ref in sync with state so async closures always read fresh displayedHand
   useEffect(() => {
     displayedHandRef.current = displayedHand;
@@ -525,7 +529,9 @@ const WhotOnlineUI = () => {
   // Mirrors computer mode pattern: teleport drawn cards to market, then animate
   // cards into the hand one-by-one sequentially.
   useEffect(() => {
-    if (!hasDealt || !visualGameState?.players?.[0]?.hand) return;
+    // Fix 2: Skip draw detection while animations are running —
+    // prevents misidentifying pile/market cards as new hand cards during transitions
+    if (!hasDealt || !visualGameState?.players?.[0]?.hand || animationLock.isAnimating) return;
 
     const reduxHand: Card[] = visualGameState.players[0].hand;
     // Read fresh displayedHand from ref — not from stale effect closure
@@ -628,7 +634,8 @@ const WhotOnlineUI = () => {
 
   // --- 5c. OPPONENT DRAW DETECTION & ANIMATION ---
   useEffect(() => {
-    if (!hasDealt || !visualGameState?.players?.[1]?.hand) return;
+    // Fix 2: Same guard for opponent draw detection
+    if (!hasDealt || !visualGameState?.players?.[1]?.hand || animationLock.isAnimating) return;
 
     const reduxOppHand: Card[] = visualGameState.players[1].hand;
     const currentDisplayedOppHand = displayedOpponentHandRef.current;
@@ -700,18 +707,20 @@ const WhotOnlineUI = () => {
   // --- 9. ANIMATE REMOTE ACTION (Pure Visual, No State Mutation) ---
   const animateRemoteAction = async (action: WhotGameAction): Promise<void> => {
     const dealer = cardListRef.current;
-    if (!dealer || !visualGameState) return;
+    // Fix 1: Use ref so animation closures always read the latest state
+    const currentVisualState = visualGameStateRef.current;
+    if (!dealer || !currentVisualState) return;
 
     switch (action.type) {
       case 'CARD_PLAYED': {
         // Prefer the full card from the server event (public info once played)
         const card = (action as any).card
-          || visualGameState?.allCards?.find(c => c.id === action.cardId);
+          || currentVisualState?.allCards?.find(c => c.id === action.cardId);
         if (!card) return;
 
         console.log(`🎴 [Remote CARD_PLAYED] card: ${card.id} suit:${card.suit} num:${card.number}`);
 
-        const zIndex = (visualGameState.pile?.length || 0) + 100;
+        const zIndex = (currentVisualState.pile?.length || 0) + 100;
         await Promise.all([
           dealer.dealCard(card, "pile", { cardIndex: zIndex }, false, action.timestamp),
           dealer.flipCard(card, true)
@@ -933,7 +942,8 @@ const WhotOnlineUI = () => {
       dealer.teleportCard(c, 'pile', { cardIndex: i });
       dealer.flipInstant(c, true);
     });
-  }, [visualGameState?.pile?.length, visualGameState?.market?.length, hasDealt]);
+  // Fix 3: snapTrigger ensures pile re-snaps after animations drain
+  }, [visualGameState?.pile?.length, visualGameState?.market?.length, hasDealt, snapTrigger]);
 
   // --- 12b. OPPONENT HAND SNAP ---
   // Snaps opponent cards whenever their hand size changes (opponent drew or played).
