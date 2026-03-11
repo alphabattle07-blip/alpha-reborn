@@ -165,6 +165,11 @@ const WhotOnlineUI = () => {
   // Prevents draw detection from re-triggering the same animation on re-fires.
   const pendingDrawIdsRef = useRef<Set<string>>(new Set());
 
+  // --- OPPONENT MOVE DEDUP ---
+  // Prevents duplicate animations when opponent-move and gameStateUpdate
+  // arrive out of order or get replayed on reconnection.
+  const processedMoveIdsRef = useRef<Set<string>>(new Set());
+
   // --- DISPLAYED OPPONENT HAND ---
   const [displayedOpponentHand, setDisplayedOpponentHand] = useState<Card[]>([]);
   const displayedOpponentHandRef = useRef<Card[]>([]);
@@ -345,10 +350,27 @@ const WhotOnlineUI = () => {
         }));
       });
 
-      // ─── OPPONENT MOVE → ENQUEUE ANIMATION ───
+      // ─── OPPONENT MOVE → DEDUP + ENQUEUE ANIMATION ───
       const unsubOpponentMove = socketService.onOpponentMove((action: any) => {
         console.log("📡 [WhotOnline] Received onOpponentMove event:", action.type);
         if (action && action.type) {
+          // Dedup: build a unique key from the action
+          const dedupKey = action.type === 'CARD_PLAYED'
+            ? `card:${action.cardId}`
+            : `${action.type}:${action.timestamp}`;
+
+          if (processedMoveIdsRef.current.has(dedupKey)) {
+            console.log(`⚠️ [WhotOnline] Duplicate opponent-move skipped: ${dedupKey}`);
+            return;
+          }
+          processedMoveIdsRef.current.add(dedupKey);
+
+          // Cap set size to prevent unbounded growth in long matches
+          if (processedMoveIdsRef.current.size > 50) {
+            const first = processedMoveIdsRef.current.values().next().value;
+            if (first !== undefined) processedMoveIdsRef.current.delete(first);
+          }
+
           animationQueue.enqueue(async () => {
             setIsAnimating(true);
             await animateRemoteAction(action as WhotGameAction);
@@ -1015,6 +1037,7 @@ const WhotOnlineUI = () => {
     displayedOpponentHandRef.current = [];
     pendingDrawIdsRef.current = new Set();
     pendingOpponentDrawIdsRef.current = new Set();
+    processedMoveIdsRef.current = new Set();
     prevBoardStringRef.current = null;
     stableBoardRef.current = null;
     stableAllCardsRef.current = [];

@@ -7,3 +7,5 @@ export const useToast = () => {
   };
   return { toast };
 };
+// Tap seed → applyMove locally (instant animation) → emit to server → server confirms → rubber-banding clears pending state
+// Tap → dice starts spinning instantly → emit ROLL_DICE → server result arrives → dice settles on final value
