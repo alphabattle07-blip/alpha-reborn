@@ -35,7 +35,14 @@ class AnimationQueue {
             const job = this.queue.shift();
             if (job) {
                 try {
-                    await job();
+                    // Bug 8 fix: 5s timeout per job prevents a stuck animation promise
+                    // from permanently locking the queue and freezing all state updates
+                    await Promise.race([
+                        job(),
+                        new Promise<void>((_, reject) =>
+                            setTimeout(() => reject(new Error('Animation job timed out after 5s')), 5000)
+                        )
+                    ]);
                 } catch (e) {
                     console.error('[AnimationQueue] Job failed:', e);
                 }

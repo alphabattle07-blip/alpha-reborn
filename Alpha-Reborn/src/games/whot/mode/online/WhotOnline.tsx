@@ -281,15 +281,19 @@ const WhotOnlineUI = () => {
   }, [currentGame?.id, userProfile?.id]);
 
   // --- 5. APPLY STATE HELPER ---
-  // Always dispatches to Redux immediately. The displayed hand is managed
-  // separately via the draw detection effect below.
+  // Bug 6 fix: Use a ref so the callback always reads the freshest currentGame,
+  // even when called from the animation queue drain callback long after it was created.
+  const currentGameRef = useRef(currentGame);
+  useEffect(() => { currentGameRef.current = currentGame; }, [currentGame]);
+
   const applyStateUpdate = useCallback((board: any, serverTime?: number) => {
-    if (!currentGame) return;
-    dispatch(setCurrentGame({ ...currentGame, board }));
+    const game = currentGameRef.current;
+    if (!game) return;
+    dispatch(setCurrentGame({ ...game, board }));
     if (serverTime) {
       setServerTimeOffset(Date.now() - serverTime);
     }
-  }, [currentGame, dispatch]);
+  }, [dispatch]);
 
 
   // --- 6. ANIMATION QUEUE DRAIN CALLBACK ---
