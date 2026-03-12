@@ -330,12 +330,13 @@ const LudoOnline = () => {
                 pendingStateRef.current = null;
             } else {
                 // Check if the server has "caught up"
-                // We compare current turn and dice state roughly
+                // The server must explicitly acknowledge the move we just made
                 const isServerEquivalent =
-                    processedState.currentPlayerIndex === pendingStateRef.current.currentPlayerIndex &&
-                    processedState.waitingForRoll === pendingStateRef.current.waitingForRoll;
+                    (processedState.players[processedState.currentPlayerIndex]?.lastProcessedMoveId === pendingStateRef.current.pendingMoveId) ||
+                    (processedState.currentPlayerIndex !== pendingStateRef.current.currentPlayerIndex) ||
+                    (processedState.waitingForRoll !== pendingStateRef.current.waitingForRoll && processedState.dice.length === 0);
 
-                if (isServerEquivalent) {
+                if (isServerEquivalent || !pendingStateRef.current.pendingMoveId) {
                     // Server matched our optimistic expectation! Clear pending state.
                     pendingStateRef.current = null;
                 } else {
@@ -379,12 +380,17 @@ const LudoOnline = () => {
 
         lastActionTimeRef.current = Date.now();
 
+        // Generate a unique ID for this action so we know when the server processes it
+        const actionId = `move_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        const moveWithId = { ...move, moveId: actionId };
+
         // Store optimistic state so rubber-banding keeps showing our local animation
-        const optimisticState = applyMove(visualGameState, move);
+        const optimisticState = applyMove(visualGameState, moveWithId);
+        (optimisticState as any).pendingMoveId = actionId;
         pendingStateRef.current = optimisticState;
 
         try {
-            socketService.emitAction(currentGame.id, 'ludo', { type: 'MOVE_PIECE', move: move });
+            socketService.emitAction(currentGame.id, 'ludo', { type: 'MOVE_PIECE', move: moveWithId, moveId: actionId });
         } catch (error) {
             // If emit fails, clear pending state to revert to server state
             pendingStateRef.current = null;

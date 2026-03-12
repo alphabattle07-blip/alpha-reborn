@@ -19,7 +19,7 @@ interface LudoTimerRingProps {
 export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
     isActive,
     turnStartTime = 0,
-    turnDuration = 25000,
+    turnDuration = 30000,
     yellowAt = 0,
     redAt = 0,
     serverTimeOffset = 0,
