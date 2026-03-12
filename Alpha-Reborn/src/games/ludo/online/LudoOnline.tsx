@@ -360,10 +360,6 @@ const LudoOnline = () => {
             return;
         }
 
-        // protection against fast taps / double rolls
-        if (Date.now() - lastActionTimeRef.current < 1000) {
-            return;
-        }
         lastActionTimeRef.current = Date.now();
 
         try {

@@ -252,6 +252,18 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
         }
     }, [isRolling, gameState.waitingForRoll, gameState.dice]);
 
+    // Emergency Failsafe: 5-second max duration for optimistic dice rolling
+    // Protects WebGL memory if a network packet is lost and the server never responds
+    useEffect(() => {
+        if (isRolling) {
+            const safetyTimeout = setTimeout(() => {
+                console.warn("[LudoCoreUI] 5s Emergency Timeout hit. Stopping optimistic roll to prevent GPU overload.");
+                setIsRolling(false);
+            }, 5000);
+            return () => clearTimeout(safetyTimeout);
+        }
+    }, [isRolling]);
+
     // Reset isRolling on turn change (e.g. opponent's turn)
     useEffect(() => {
         setIsRolling(false);
@@ -307,7 +319,8 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     // AI Turn Loop
     useEffect(() => {
         // AI only plays in local computer games (no onMove prop)
-        const isAiTurn = !onMove && gameState.currentPlayerIndex === 1 && !gameState.winner;
+        // Ensure AI waits if optimistic dice is still spinning or another action is blocked
+        const isAiTurn = !onMove && gameState.currentPlayerIndex === 1 && !gameState.winner && !isRolling;
         if (isAiTurn) {
             const aiDelay = 1000;
             if (gameState.waitingForRoll) {

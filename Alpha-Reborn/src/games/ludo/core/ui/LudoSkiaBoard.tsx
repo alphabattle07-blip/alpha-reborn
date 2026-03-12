@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { Canvas, Image as SkiaImage, useImage, Circle, Group, Paint, Shadow } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -254,6 +254,33 @@ const AnimatedSeed = ({ id, playerId, seedSubIndex, currentPos, landingPos, anim
     );
 };
 
+// Render Throttle Hook (GPU Safety Guard)
+// Limits how often a rapidly changing value can trigger a re-render
+function useThrottledValue<T>(value: T, limitMs: number): T {
+    const [throttledValue, setThrottledValue] = useState(value);
+    const lastRan = useRef(Date.now());
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        const now = Date.now();
+        if (now - lastRan.current >= limitMs) {
+            setThrottledValue(value);
+            lastRan.current = now;
+        } else {
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            timeoutRef.current = setTimeout(() => {
+                setThrottledValue(value);
+                lastRan.current = Date.now();
+            }, limitMs - (now - lastRan.current));
+        }
+        return () => {
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        };
+    }, [value, limitMs]);
+
+    return throttledValue;
+}
+
 // Helper to get pixel position for a seed
 const getSeedPixelPosition = (seedPos: number, playerId: string, seedSubIndex: number, boardX: number, boardY: number, boardSize: number, colorName: 'red' | 'yellow' | 'blue' | 'green', canvasWidth: number, canvasHeight: number, stackIndex: number, stackSize: number) => {
     let path = RED_PATH;
@@ -300,6 +327,10 @@ export const LudoSkiaBoard = ({ onBoardPress, positions, level, width: propWidth
     const canvasWidth = propWidth ?? (windowWidth * 0.95);
     const canvasHeight = propHeight ?? (canvasWidth * 1.2); // Increase height to give more room top/bottom
 
+    // Render Throttle (GPU Safety Guard): Limit Skia re-renders to max 30 FPS (33ms)
+    // Ensures massive state update loops (e.g. from dice) cannot overwhelm WebGL texture memory
+    const throttledPositions = useThrottledValue(positions, 33);
+
     // Scale board to make room for outer images
     // Using BOARD_SCALE constant
     const boardSize = canvasWidth * BOARD_SCALE;
@@ -319,7 +350,7 @@ export const LudoSkiaBoard = ({ onBoardPress, positions, level, width: propWidth
         const list: any[] = [];
         const positionGroups: { [key: string]: number[] } = {};
 
-        Object.entries(positions).forEach(([playerId, seedPositions]) => {
+        Object.entries(throttledPositions).forEach(([playerId, seedPositions]) => {
             const isP1 = playerId === 'p1';
             const colorName = isP1 ? 'blue' : 'green';
             const color = isP1 ? '#007AFF' : '#34C759';
