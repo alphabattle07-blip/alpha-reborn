@@ -159,11 +159,18 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
     }, [value, size, isUsed, isRolling]);
 
     // Derived transform for the Skia Group
-    const transform = useDerivedValue(() => [
-        { translateY: bounce.value },
-        { rotate: rotation.value },
-        { scale: scale.value }
-    ]);
+    const transformArray = useMemo(() => [
+        { translateY: 0 },
+        { rotate: 0 },
+        { scale: 1 }
+    ], []);
+    
+    const transform = useDerivedValue(() => {
+        transformArray[0].translateY = bounce.value;
+        transformArray[1].rotate = rotation.value;
+        transformArray[2].scale = scale.value;
+        return transformArray;
+    });
 
     // --- Pip Calculation (Based on internalValue) ---
     const pips = useMemo(() => {

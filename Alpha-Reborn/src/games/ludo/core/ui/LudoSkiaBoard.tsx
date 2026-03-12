@@ -224,8 +224,18 @@ const AnimatedSeed = ({ id, playerId, seedSubIndex, currentPos, landingPos, anim
 
     }, [currentPos, landingPos, animationDelay, boardX, boardY, boardSize, stackIndex, stackSize]);
 
-    const transform = useDerivedValue(() => [{ scale: scale.value }]);
-    const origin = useDerivedValue(() => ({ x: cx.value, y: cy.value }));
+    const transformArray = useMemo(() => [{ scale: 1 }], []);
+    const transform = useDerivedValue(() => {
+        transformArray[0].scale = scale.value;
+        return transformArray;
+    });
+
+    const originObj = useMemo(() => ({ x: 0, y: 0 }), []);
+    const origin = useDerivedValue(() => {
+        originObj.x = cx.value;
+        originObj.y = cy.value;
+        return originObj;
+    });
     const indicatorScale = useDerivedValue(() => 1 + pulse.value * 0.4);
     const indicatorOpacity = useDerivedValue(() => pulse.value);
     // Extracted from inline JSX to prevent GPU memory leak (hooks must not be called inside JSX)
