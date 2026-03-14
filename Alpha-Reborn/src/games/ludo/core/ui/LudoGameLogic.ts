@@ -14,6 +14,7 @@ export interface LudoPlayer {
     id: string;
     color: PlayerColor;
     seeds: LudoSeed[];
+    lastProcessedMoveId?: string;
 }
 
 export interface LudoGameState {
@@ -25,6 +26,8 @@ export interface LudoGameState {
     winner: string | null;
     log: string[];
     level: number;
+    stateVersion?: number;
+    pendingMoveId?: string;
 }
 
 const HOUSE_POS = -1;

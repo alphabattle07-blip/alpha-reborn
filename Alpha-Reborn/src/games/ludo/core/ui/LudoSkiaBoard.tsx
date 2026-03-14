@@ -86,7 +86,8 @@ const applyRadialOffset = (base: { x: number, y: number }, index: number, total:
     };
 };
 
-const AnimatedSeed = ({ id, playerId, seedSubIndex, currentPos, landingPos, animationDelay, isActive, boardX, boardY, boardSize, color, radius, colorName, canvasWidth, canvasHeight, stackIndex, stackSize }: { id: string, playerId: string, seedSubIndex: number, currentPos: number, landingPos: number, animationDelay: number, isActive: boolean, boardX: number, boardY: number, boardSize: number, color: string, radius: number, colorName: 'red' | 'yellow' | 'blue' | 'green', canvasWidth: number, canvasHeight: number, stackIndex: number, stackSize: number }) => {
+// Memoized Seed to prevent React re-renders when other seeds move
+const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landingPos, animationDelay, isActive, boardX, boardY, boardSize, color, radius, colorName, canvasWidth, canvasHeight, stackIndex, stackSize }: { id: string, playerId: string, seedSubIndex: number, currentPos: number, landingPos: number, animationDelay: number, isActive: boolean, boardX: number, boardY: number, boardSize: number, color: string, radius: number, colorName: 'red' | 'yellow' | 'blue' | 'green', canvasWidth: number, canvasHeight: number, stackIndex: number, stackSize: number }) => {
     const getTargetPixels = (stepIndex: number, isFinal: boolean = false) => {
         let norm = { x: 0.5, y: 0.5 };
 
@@ -262,7 +263,19 @@ const AnimatedSeed = ({ id, playerId, seedSubIndex, currentPos, landingPos, anim
             </Group>
         </Group>
     );
-};
+}, (prevProps, nextProps) => {
+    // Only re-render if the seed's actual structural state changed.
+    // Reanimated hooks handle the visual movement on the UI thread without needing React to re-render.
+    return (
+        prevProps.currentPos === nextProps.currentPos &&
+        prevProps.landingPos === nextProps.landingPos &&
+        prevProps.isActive === nextProps.isActive &&
+        prevProps.animationDelay === nextProps.animationDelay &&
+        prevProps.stackIndex === nextProps.stackIndex &&
+        prevProps.stackSize === nextProps.stackSize &&
+        prevProps.boardSize === nextProps.boardSize
+    );
+});
 
 // Render Throttle Hook (GPU Safety Guard)
 // Limits how often a rapidly changing value can trigger a re-render
@@ -326,7 +339,7 @@ const getSeedPixelPosition = (seedPos: number, playerId: string, seedSubIndex: n
     return base;
 };
 
-export const LudoSkiaBoard = ({ onBoardPress, positions, level, width: propWidth, height: propHeight }: { onBoardPress: any, positions: { [key: string]: { pos: number, land: number, delay: number, isActive: boolean }[] }, level?: number, width?: number, height?: number }) => {
+const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWidth, height: propHeight }: { onBoardPress: any, positions: { [key: string]: { pos: number, land: number, delay: number, isActive: boolean }[] }, level?: number, width?: number, height?: number }) => {
     const boardImage = useImage(boardImageSource);
     const blueImage = useImage(blueImageSource);
     const greenImage = useImage(greenImageSource);
@@ -412,7 +425,7 @@ export const LudoSkiaBoard = ({ onBoardPress, positions, level, width: propWidth
         });
 
         return list;
-    }, [positions]);
+    }, [throttledPositions]);
 
     // Hit-test function to find which seed was tapped
     const findTappedSeed = (tapX: number, tapY: number) => {
@@ -564,3 +577,33 @@ export const LudoSkiaBoard = ({ onBoardPress, positions, level, width: propWidth
         </GestureDetector>
     );
 };
+
+// Memoize the entire board to prevent re-rendering when LudoCoreUI updates (e.g., timer ticking)
+export const LudoSkiaBoard = React.memo(LudoSkiaBoardComponent, (prevProps, nextProps) => {
+    // Basic prop checks
+    if (prevProps.level !== nextProps.level || prevProps.width !== nextProps.width || prevProps.height !== nextProps.height) {
+        return false;
+    }
+
+    // Deep compare positions lengths (fast path)
+    const prevKeys = Object.keys(prevProps.positions);
+    const nextKeys = Object.keys(nextProps.positions);
+    if (prevKeys.length !== nextKeys.length) return false;
+
+    // Deep compare actual seed positions/states
+    for (const key of prevKeys) {
+        const prevSeeds = prevProps.positions[key];
+        const nextSeeds = nextProps.positions[key];
+        if (!nextSeeds || prevSeeds.length !== nextSeeds.length) return false;
+
+        for (let i = 0; i < prevSeeds.length; i++) {
+            const p = prevSeeds[i];
+            const n = nextSeeds[i];
+            if (p.pos !== n.pos || p.land !== n.land || p.delay !== n.delay || p.isActive !== n.isActive) {
+                return false;
+            }
+        }
+    }
+
+    return true; // All structural data identical, skip re-render!
+});

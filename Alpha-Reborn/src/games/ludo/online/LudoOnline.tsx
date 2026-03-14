@@ -60,6 +60,9 @@ const LudoOnline = () => {
     const turnTimer = useRef<any>(null);
     const hasStartedMatchmaking = useRef(false);
 
+    // --- Opponent Rolling State ---
+    const [isOpponentRolling, setIsOpponentRolling] = useState(false);
+
     // --- Optimistic State Protection ---
     // Stores our local state after an action until the server confirms it
     const pendingStateRef = useRef<LudoGameState | null>(null);
@@ -200,6 +203,71 @@ const LudoOnline = () => {
                 });
             });
 
+            // 3.5 Listen for Action Deltas (Rolling / Moves)
+            const unsubscribeActionUpdate = socketService.onLudoActionUpdate((data: any) => {
+                if (gameOverProcessedRef.current) return;
+
+                if (data.type === 'DICE_ROLLING_STARTED') {
+                    // Check if the opponent started rolling
+                    // isPlayer1 === true means we are index 0, opponent is index 1
+                    const myServerIndex = isPlayer1 ? 0 : 1;
+                    if (data.rollingPlayerIndex !== myServerIndex) {
+                        setIsOpponentRolling(true);
+                        // Clear pending state to prevent rubber-banding of the rolling animation
+                        pendingStateRef.current = null;
+                        lastActionTimeRef.current = 0;
+                    }
+                    return;
+                }
+
+                // If it's a real delta update, stop the local rolling animation immediately
+                setIsOpponentRolling(false);
+                
+                const latestGame = currentGameRef.current;
+                if (!latestGame) return;
+                
+                let currentBoard = typeof latestGame.board === 'string' ? JSON.parse(latestGame.board) : latestGame.board;
+                let newBoard = { ...currentBoard };
+                let shouldUpdate = false;
+
+                if (data.type === 'ROLL_DICE') {
+                    newBoard.dice = data.dice;
+                    newBoard.waitingForRoll = data.waitingForRoll;
+                    newBoard.diceUsed = data.diceUsed;
+                    newBoard.currentPlayerIndex = data.currentPlayerIndex;
+                    newBoard.stateVersion = data.stateVersion;
+                    shouldUpdate = true;
+                } else if (data.type === 'MOVE_PIECE' && data.move) {
+                    try {
+                       newBoard = applyMove(newBoard, data.move);
+                       // Server wins any disagreements
+                       newBoard.waitingForRoll = data.waitingForRoll;
+                       newBoard.currentPlayerIndex = data.currentPlayerIndex;
+                       newBoard.diceUsed = data.diceUsed;
+                       newBoard.stateVersion = data.stateVersion;
+                       shouldUpdate = true;
+                    } catch (e) {
+                       console.error("[LudoOnline] Failed to apply opponent move locally", e);
+                       dispatch(fetchGameState(latestGame.id)); // Fallback
+                    }
+                } else if (data.type === 'PASS_TURN') {
+                    newBoard.waitingForRoll = data.waitingForRoll;
+                    newBoard.currentPlayerIndex = data.currentPlayerIndex;
+                    newBoard.diceUsed = data.diceUsed;
+                    newBoard.dice = [];
+                    newBoard.stateVersion = data.stateVersion;
+                    shouldUpdate = true;
+                }
+
+                if (shouldUpdate) {
+                    // Update the local Redux store with the patched board
+                    dispatch(setCurrentGame({
+                        ...latestGame,
+                        board: newBoard
+                    }));
+                }
+            });
+
             // 4. Listen for game ended (forfeit, normal win)
             const unsubscribeEnded = socketService.onGameEnded((data: any) => {
                 const latestGame = currentGameRef.current;
@@ -235,6 +303,7 @@ const LudoOnline = () => {
             return () => {
                 unsubscribe();
                 unsubscribeTurn();
+                unsubscribeActionUpdate();
                 unsubscribeEnded();
                 unsubscribeChatHistory();
                 unsubscribeChatMessage();
@@ -443,6 +512,7 @@ const LudoOnline = () => {
         pendingStateRef.current = null;
         lastActionTimeRef.current = 0;
         gameOverProcessedRef.current = false;
+        setIsOpponentRolling(false);
         setTimerSync(null);
         // Restart matchmaking — will show "Looking for Opponent" UI
         hasStartedMatchmaking.current = true;
@@ -502,6 +572,7 @@ const LudoOnline = () => {
                     onRoll={handleRoll}
                     onPassTurn={handlePassTurn}
                     timerSync={timerSync || undefined}
+                    isOpponentRolling={isOpponentRolling}
                     onGameOver={() => { }} // Handled by status in update
                 />
 

@@ -1,5 +1,5 @@
 // LudoCoreUI.tsx
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigation } from "@react-navigation/native";
 import { useWindowDimensions, View, StyleSheet, Text, TouchableOpacity, Alert } from "react-native";
 import { LudoSkiaBoard } from "./LudoSkiaBoard";
@@ -164,6 +164,7 @@ type LudoGameProps = {
         redAt?: number;
         serverTimeOffset?: number;
     };
+    isOpponentRolling?: boolean;
 };
 
 // --- Dice Positioning Configuration ---
@@ -183,18 +184,68 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     onPassTurn,
     level,
     timerSync,
+    isOpponentRolling,
 }) => {
     const navigation = useNavigation();
     const [internalGameState, setInternalGameState] = useState<LudoGameState>(
         propGameState ?? initializeGame('blue', 'green', level || 2)
     );
 
-    // Sync internal state with prop if controlled
-    useEffect(() => {
-        if (propGameState) {
+    // --- Ref: tracks when player last applied a local move, to guard propGameState sync ---
+    const lastLocalMoveTimeRef = useRef<number>(0);
+
+    // --- Turn Transition: freeze dice display for 2s after a turn switch ---
+    const [frozenDice, setFrozenDice] = useState<{ dice: number[]; diceUsed: boolean[]; playerIndex: number } | null>(null);
+    const turnTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+// Sync internal state with prop if controlled (online mode)
+useEffect(() => {
+    if (propGameState) {
+        // --- Detect opponent turn-switch (online) ---
+        // If the opponent just made their last move, internalGameState still holds their
+        // dice values. The new propGameState has dice=[] and it's now our turn.
+        const wasOpponentTurn = internalGameState.currentPlayerIndex !== 0;
+        const isNowOurTurn = propGameState.currentPlayerIndex === 0 && propGameState.waitingForRoll;
+        const opponentHadDice = internalGameState.dice.length > 0;
+
+        if (wasOpponentTurn && isNowOurTurn && opponentHadDice && !propGameState.winner && frozenDice === null) {
+            // Freeze the opponent's dice on screen for 2s so the player can read the result
+            setFrozenDice({
+                dice: internalGameState.dice,
+                diceUsed: internalGameState.diceUsed.map(() => true),
+                playerIndex: internalGameState.currentPlayerIndex,
+            });
+            setInternalGameState(propGameState); // apply move position NOW
+            if (turnTransitionTimerRef.current) clearTimeout(turnTransitionTimerRef.current);
+            turnTransitionTimerRef.current = setTimeout(() => {
+                setFrozenDice(null);
+                turnTransitionTimerRef.current = null;
+            }, 2000);
+        } else {
             setInternalGameState(propGameState);
         }
-    }, [propGameState]);
+    }
+}, [propGameState]);
+
+
+    // Clear frozen dice if the human player gets a new bonus roll (his own dice arrive)
+    // Do NOT clear early just because the AI/opponent rolled — the 2s timer handles that.
+    useEffect(() => {
+        if (frozenDice !== null && !internalGameState.waitingForRoll && internalGameState.dice.length > 0 && internalGameState.currentPlayerIndex === 0) {
+            setFrozenDice(null);
+            if (turnTransitionTimerRef.current) {
+                clearTimeout(turnTransitionTimerRef.current);
+                turnTransitionTimerRef.current = null;
+            }
+        }
+    }, [internalGameState.waitingForRoll, internalGameState.dice, internalGameState.currentPlayerIndex]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (turnTransitionTimerRef.current) clearTimeout(turnTransitionTimerRef.current);
+        };
+    }, []);
 
     const gameState = internalGameState;
     const setGameState = setInternalGameState;
@@ -245,12 +296,15 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     // --- Optimistic Dice Rolling State (Online only) ---
     const [isRolling, setIsRolling] = useState(false);
 
-    // Clear isRolling when real dice values arrive from server
+    // Clear isRolling when real dice values arrive from server or turn switches
     useEffect(() => {
-        if (isRolling && !gameState.waitingForRoll && gameState.dice.length > 0) {
-            setIsRolling(false);
+        if (isRolling) {
+            // Stop rolling if dice arrived, or if it's no longer our turn
+            if ((!gameState.waitingForRoll && gameState.dice.length > 0) || gameState.currentPlayerIndex !== 0) {
+                setIsRolling(false);
+            }
         }
-    }, [isRolling, gameState.waitingForRoll, gameState.dice]);
+    }, [isRolling, gameState.waitingForRoll, gameState.dice, gameState.currentPlayerIndex]);
 
     // Emergency Failsafe: 5-second max duration for optimistic dice rolling
     // Protects WebGL memory if a network packet is lost and the server never responds
@@ -310,7 +364,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                         const newState = passTurn(gameState);
                         setGameState(newState);
                     }
-                }, 1000);
+                }, 2000); // 2s so the player can read the dice result before the turn passes
                 return () => clearTimeout(timer);
             }
         }
@@ -322,11 +376,14 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
         // Ensure AI waits if optimistic dice is still spinning or another action is blocked
         const isAiTurn = !onMove && gameState.currentPlayerIndex === 1 && !gameState.winner && !isRolling;
         if (isAiTurn) {
-            const aiDelay = 1000;
+            // Short pause before AI rolls ("thinking" feel)
+            const AI_ROLL_DELAY = 800;
+            // After the dice appear, wait 2s so the player can read the result before AI moves
+            const AI_MOVE_DELAY = 2000;
             if (gameState.waitingForRoll) {
                 const timer = setTimeout(() => {
                     handleRollDice();
-                }, aiDelay);
+                }, AI_ROLL_DELAY);
                 return () => clearTimeout(timer);
             } else {
                 const timer = setTimeout(() => {
@@ -334,16 +391,39 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                     if (moves.length > 0) {
                         const aiMove = getComputerMove(gameState, level || 2);
                         if (aiMove) {
-                            setGameState(prev => applyMove(prev, aiMove));
+                            const newState = applyMove(gameState, aiMove);
+                            const isTurnSwitch = newState.currentPlayerIndex !== gameState.currentPlayerIndex;
+
+                            if (isTurnSwitch && !newState.winner) {
+                                // Freeze AI's dice on screen for 2s so player can read the result
+                                setFrozenDice({
+                                    dice: gameState.dice,
+                                    diceUsed: gameState.diceUsed.map(() => true),
+                                    playerIndex: gameState.currentPlayerIndex,
+                                });
+                                setGameState(newState); // seed animates NOW
+                                if (turnTransitionTimerRef.current) clearTimeout(turnTransitionTimerRef.current);
+                                turnTransitionTimerRef.current = setTimeout(() => {
+                                    setFrozenDice(null);
+                                    turnTransitionTimerRef.current = null;
+                                }, 2000);
+                            } else {
+                                // Bonus roll — no freeze, just apply and let AI loop roll again
+                                setGameState(newState);
+                            }
                         }
                     }
-                }, aiDelay);
+                }, AI_MOVE_DELAY);
                 return () => clearTimeout(timer);
             }
         }
     }, [gameState, handleRollDice, level, onMove]);
 
+
     const handleBoardPress = useCallback((x: number, y: number, tappedSeed?: { playerId: string; seedIndex: number; position: number } | null) => {
+        // Block input during turn transition animation
+        if (frozenDice !== null) return;
+
         if (tappedSeed) {
             if (tappedSeed.playerId !== 'p1') return;
             if (gameState.currentPlayerIndex !== 0) return;
@@ -352,9 +432,33 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                 const moves = getValidMoves(gameState);
                 const matchingMove = moves.find(move => move.seedIndex === tappedSeed.seedIndex);
                 if (matchingMove) {
+                    // Mark local move time (prevents propGameState sync from reverting)
+                    lastLocalMoveTimeRef.current = Date.now();
+
                     // Apply move locally FIRST for instant animation
                     const newState = applyMove(gameState, matchingMove);
-                    setGameState(newState);
+
+                    // Check if this move results in an opponent turn switch (no bonus roll)
+                    const isTurnSwitch = newState.currentPlayerIndex !== gameState.currentPlayerIndex;
+
+                    if (isTurnSwitch && !newState.winner) {
+                        // Show the result (seed moved, dice visible) for 2 seconds before switching
+                        setFrozenDice({
+                            dice: gameState.dice,
+                            diceUsed: gameState.diceUsed.map(() => true),
+                            playerIndex: gameState.currentPlayerIndex,
+                        });
+                        // Apply the post-move position NOW so the seed visually moves
+                        setGameState(newState);
+                        // After 2 seconds, clear the frozen display (opponent dice house takes over)
+                        if (turnTransitionTimerRef.current) clearTimeout(turnTransitionTimerRef.current);
+                        turnTransitionTimerRef.current = setTimeout(() => {
+                            setFrozenDice(null);
+                            turnTransitionTimerRef.current = null;
+                        }, 2000);
+                    } else {
+                        setGameState(newState);
+                    }
 
                     if (onMove) {
                         // Online mode: also emit to server (server validates & broadcasts)
@@ -363,7 +467,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                 }
             }
         }
-    }, [gameState, onMove]);
+    }, [gameState, onMove, frozenDice]);
 
 
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -418,20 +522,30 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
             </View>
 
             {/* Persistent Dice House - Moves instead of remounting */}
+            {/* During turn transition, keep the dice house frozen at the current player's position */}
             {!gameState.winner && (
-                <View style={diceHouseStyle}>
+                <View style={frozenDice !== null
+                    ? getDicePositionStyle(frozenDice.playerIndex === 0 ? 'blue' : 'green')
+                    : diceHouseStyle
+                }>
                     <DiceHouse
-                        dice={gameState.dice}
-                        diceUsed={gameState.diceUsed}
-                        waitingForRoll={gameState.waitingForRoll}
+                        dice={frozenDice !== null ? frozenDice.dice : gameState.dice}
+                        diceUsed={frozenDice !== null ? frozenDice.diceUsed : gameState.diceUsed}
+                        waitingForRoll={frozenDice !== null ? false : gameState.waitingForRoll}
                         onPress={handleRollDice}
-                        rankIcon={gameState.currentPlayerIndex === 0 ? playerRank.icon : opponentRank.icon}
-                        disabled={gameState.currentPlayerIndex !== 0}
-                        isRolling={isRolling}
-                        timerProps={timerSync ? {
+                        rankIcon={frozenDice !== null
+                            ? (frozenDice.playerIndex === 0 ? playerRank.icon : opponentRank.icon)
+                            : (gameState.currentPlayerIndex === 0 ? playerRank.icon : opponentRank.icon)
+                        }
+                        disabled={frozenDice !== null || gameState.currentPlayerIndex !== 0}
+                        isRolling={
+                            (gameState.currentPlayerIndex === 0 ? isRolling : !!isOpponentRolling)
+                            && frozenDice === null
+                        }
+                        timerProps={frozenDice !== null ? undefined : (timerSync ? {
                             isActive: true,
                             ...timerSync
-                        } : undefined}
+                        } : undefined)}
                     />
                 </View>
             )}

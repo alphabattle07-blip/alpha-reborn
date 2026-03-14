@@ -83,6 +83,10 @@ class SocketService {
             this.emitLocal('turnStarted', data);
         });
 
+        this.socket.on('ludoActionUpdate', (data: any) => {
+            this.emitLocal('ludoActionUpdate', data);
+        });
+
         // Game ended (normal win or forfeit)
         this.socket.on('gameEnded', (data: any) => {
             console.log('[SocketService] Received gameEnded:', data);
@@ -235,6 +239,10 @@ class SocketService {
 
     onTurnStarted(callback: (data: any) => void) {
         return this.on('turnStarted', callback);
+    }
+
+    onLudoActionUpdate(callback: (data: any) => void) {
+        return this.on('ludoActionUpdate', callback);
     }
 
     onGameEnded(callback: (data: any) => void) {
