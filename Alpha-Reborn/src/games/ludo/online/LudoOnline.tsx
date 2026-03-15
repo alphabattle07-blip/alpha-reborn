@@ -400,10 +400,12 @@ const LudoOnline = () => {
             } else {
                 // Check if the server has "caught up"
                 // The server must explicitly acknowledge the move we just made
+                // OR the server has explicitly sent a new dice result (bonus roll)
                 const isServerEquivalent =
                     (processedState.players[processedState.currentPlayerIndex]?.lastProcessedMoveId === pendingStateRef.current.pendingMoveId) ||
                     (processedState.currentPlayerIndex !== pendingStateRef.current.currentPlayerIndex) ||
-                    (processedState.waitingForRoll !== pendingStateRef.current.waitingForRoll && processedState.dice.length === 0);
+                    (processedState.waitingForRoll !== pendingStateRef.current.waitingForRoll && processedState.dice.length === 0) ||
+                    (!processedState.waitingForRoll && processedState.dice.length > 0); // NEW: Overrule pending move if server has explicit dice result
 
                 if (isServerEquivalent || !pendingStateRef.current.pendingMoveId) {
                     // Server matched our optimistic expectation! Clear pending state.
