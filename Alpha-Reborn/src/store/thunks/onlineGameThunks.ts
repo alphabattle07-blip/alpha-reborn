@@ -71,11 +71,35 @@ export const fetchGameState = createAsyncThunk(
   async (gameId: string, { dispatch, getState, rejectWithValue }) => {
     try {
       const game = await gameService.getGame(gameId);
-      // Don't overwrite a COMPLETED game with a stale in-flight response
       const currentState = (getState() as any).onlineGame?.currentGame;
+      
+      // Don't overwrite a COMPLETED game with a stale in-flight response
       if (currentState?.status === 'COMPLETED') {
         return currentState;
       }
+
+      // STATE VERSION PROTECTION: Drop stale HTTP polling results that arrive after fresh WebSocket data
+      if (currentState && currentState.board && game && game.board) {
+        let currentVersion = 0;
+        let incomingVersion = 0;
+        
+        try {
+          const cb = typeof currentState.board === 'string' ? JSON.parse(currentState.board) : currentState.board;
+          const ib = typeof game.board === 'string' ? JSON.parse(game.board) : game.board;
+          currentVersion = cb.stateVersion || 0;
+          incomingVersion = ib.stateVersion || 0;
+        } catch (e) {
+          // JSON parse fail, ignore version check
+        }
+        
+        // If the HTTP fetch returned an older or identical state version than our Redux store via WebSocket, discard it!
+        // Discarding identical versions prevents React from undergoing massive full-app re-renders every 15 seconds.
+        if (currentVersion >= incomingVersion && currentVersion > 0) {
+            console.log(`[Redux] Discarding redundant fetchGameState response. Client version: ${currentVersion}, Server HTTP version: ${incomingVersion}`);
+            return currentState;
+        }
+      }
+
       dispatch(setCurrentGame(game));
       return game;
     } catch (error: any) {

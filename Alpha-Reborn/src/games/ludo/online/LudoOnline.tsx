@@ -237,6 +237,17 @@ const LudoOnline = () => {
                     newBoard.currentPlayerIndex = data.currentPlayerIndex;
                     newBoard.stateVersion = data.stateVersion;
                     shouldUpdate = true;
+                    // Reset the visual timer ring for the move phase.
+                    // The server will also send a 'turnStarted' event shortly, which will sync exactly.
+                    // This pre-emptive reset prevents a flash of the old timer state.
+                    if (!data.waitingForRoll && data.serverTime) {
+                        setTimerSync({
+                            turnStartTime: data.serverTime,
+                            turnDuration: 15000,
+                            redAt: data.serverTime + 10000,
+                            serverTimeOffset: Date.now() - data.serverTime,
+                        });
+                    }
                 } else if (data.type === 'MOVE_PIECE' && data.move) {
                     try {
                        newBoard = applyMove(newBoard, data.move);

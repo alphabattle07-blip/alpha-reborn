@@ -15,7 +15,7 @@ import {
 import { getRankFromRating } from '../../../../utils/rank';
 import { getComputerMove } from "../../computer/LudoComputerLogic";
 import { Ludo3DDie } from "./Ludo3DDie";
-import { useLudoTimerColor } from "./LudoTimerRing";
+import { LudoTimerRing } from "./LudoTimerRing";
 import { useLudoSoundEffects } from "../useLudoSoundEffects";
 import QuickMuteButton from '../../../../components/QuickMuteButton';
 
@@ -30,7 +30,8 @@ const styles = StyleSheet.create({
         borderRadius: 15,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.2)',
-        minWidth: 80,
+        width: 90,
+        height: 60,
         alignItems: 'center',
         justifyContent: 'center'
     },
@@ -96,18 +97,13 @@ const DiceHouse = ({
         serverTimeOffset?: number;
     }
 }) => {
-    const timerBorderColor = useLudoTimerColor(timerProps);
-    const hasTimer = timerProps?.isActive;
     // Determine dice count for rolling placeholder (1 die for level < 3, 2 for >= 3)
     const rollingDiceCount = dice?.length > 0 ? dice.length : 1;
 
     return (
-        <View style={{ width: 100, height: 100, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 94, height: 64, alignItems: 'center', justifyContent: 'center' }}>
             <TouchableOpacity
-                style={[
-                    styles.diceHouse,
-                    hasTimer && { borderColor: timerBorderColor, borderWidth: 3 }
-                ]}
+                style={styles.diceHouse}
                 onPress={onPress}
                 disabled={disabled || !waitingForRoll || isRolling}
                 activeOpacity={0.8}
@@ -143,6 +139,21 @@ const DiceHouse = ({
                     </View>
                 )}
             </TouchableOpacity>
+
+            {/* SVG Timer Border — overlaid exactly around the DiceHouse */}
+            {timerProps?.isActive && (
+                <LudoTimerRing
+                    isActive={timerProps.isActive}
+                    turnStartTime={timerProps.turnStartTime}
+                    turnDuration={timerProps.turnDuration}
+                    redAt={timerProps.redAt}
+                    serverTimeOffset={timerProps.serverTimeOffset}
+                    width={94}
+                    height={64}
+                    borderRadius={17}
+                    strokeWidth={3}
+                />
+            )}
         </View>
     );
 };
@@ -477,8 +488,8 @@ useEffect(() => {
         const pos = checkPos || { x: 0.5, y: 0.5 };
         return {
             position: 'absolute' as const,
-            left: pos.x * windowWidth - 40,
-            top: pos.y * windowHeight - 40,
+            left: pos.x * windowWidth - 47, // Centering 94px width
+            top: pos.y * windowHeight - 32, // Centering 64px height
         };
     };
 

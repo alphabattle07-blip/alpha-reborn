@@ -1,5 +1,16 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
+import Svg, { Rect } from 'react-native-svg';
+import Animated, {
+    useSharedValue,
+    useAnimatedProps,
+    withTiming,
+    Easing,
+    interpolateColor,
+    useDerivedValue,
+} from 'react-native-reanimated';
+
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
 interface LudoTimerRingProps {
     isActive: boolean;
@@ -8,82 +19,107 @@ interface LudoTimerRingProps {
     yellowAt?: number;
     redAt?: number;
     serverTimeOffset?: number;
-    size?: number;
+    size?: number; // Kept for compatibility, width/height preferred
+    width?: number;
+    height?: number;
+    borderRadius?: number;
     strokeWidth?: number;
 }
 
 /**
  * A timer ring for Ludo dice house.
- * Changes color from Green -> Yellow -> Red based on server-provided thresholds.
+ * Uses SVG and Reanimated to smoothly shrink a borderline progress bar over the duration.
+ * Shape follows a rounded rectangle to match the DiceHouse.
  */
 export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
     isActive,
     turnStartTime = 0,
-    turnDuration = 30000,
-    yellowAt = 0,
+    turnDuration = 15000,
     redAt = 0,
     serverTimeOffset = 0,
-    size = 72,
-    strokeWidth = 4,
+    size = 100,
+    width: propWidth,
+    height: propHeight,
+    borderRadius = 15,
+    strokeWidth = 3,
 }) => {
-    const [currentColor, setCurrentColor] = useState('#00FF00'); // Green
-    const [opacity, setOpacity] = useState(1);
-    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const W = propWidth || size;
+    const H = propHeight || size;
+    const R = borderRadius;
+
+    // Perimeter of a rounded rectangle: 2(W-2R) + 2(H-2R) + 2*PI*R
+    const perimeter = useMemo(() => {
+        return 2 * (W - 2 * R) + 2 * (H - 2 * R) + 2 * Math.PI * R;
+    }, [W, H, R]);
+
+    const progress = useSharedValue(isActive ? 1 : 0);
 
     useEffect(() => {
         if (!isActive || !turnStartTime || !turnDuration) {
-            setCurrentColor('#555555');
-            setOpacity(0.3);
-            if (intervalRef.current) clearInterval(intervalRef.current);
+            progress.value = withTiming(0, { duration: 300 });
             return;
         }
 
-        setOpacity(1);
+        const currentServerTime = Date.now() - serverTimeOffset;
+        const elapsed = currentServerTime - turnStartTime;
+        const remaining = Math.max(0, turnDuration - elapsed);
 
-        const checkColor = () => {
-            const currentServerTime = Date.now() - serverTimeOffset;
-            const elapsed = currentServerTime - turnStartTime;
+        // Snap to current progress
+        progress.value = remaining / turnDuration;
 
-            if (elapsed >= turnDuration) {
-                setCurrentColor('#FF0000'); // Expired
-                setOpacity(0.5);
-                return;
-            }
+        // Animate remaining time
+        if (remaining > 0) {
+            progress.value = withTiming(0, {
+                duration: remaining,
+                easing: Easing.linear,
+            });
+        }
+    }, [isActive, turnStartTime, turnDuration, serverTimeOffset]);
 
-            if (redAt > 0 && currentServerTime >= redAt) {
-                setCurrentColor('#FF3B30'); // Red
-            } else if (yellowAt > 0 && currentServerTime >= yellowAt) {
-                setCurrentColor('#FFCC00'); // Yellow  
-            } else {
-                setCurrentColor('#34C759'); // Green
-            }
+    const strokeColor = useDerivedValue(() => {
+        if (!isActive) return '#555555';
+        const remainingMs = progress.value * turnDuration;
+        const redThreshold = 5000; // Warning starts at 5s remaining
+
+        return interpolateColor(
+            remainingMs,
+            [0, redThreshold, redThreshold + 1000],
+            ['#FF0000', '#FF3B30', '#34C759']
+        );
+    });
+
+    const animatedProps = useAnimatedProps(() => {
+        return {
+            strokeDashoffset: -perimeter * (1 - progress.value),
+            stroke: strokeColor.value,
         };
+    });
 
-        checkColor(); // initial check
-        intervalRef.current = setInterval(checkColor, 1000); // Check every second
-
-        return () => {
-            if (intervalRef.current) clearInterval(intervalRef.current);
-        };
-    }, [isActive, turnStartTime, turnDuration, yellowAt, redAt, serverTimeOffset]);
+    const svgStyles = [
+        styles.container,
+        { width: W, height: H }
+    ];
 
     if (!isActive) return null;
 
     return (
-        <View
-            pointerEvents="none"
-            style={[
-                styles.container,
-                {
-                    width: size,
-                    height: size,
-                    borderRadius: size / 2,
-                    borderWidth: strokeWidth,
-                    borderColor: currentColor,
-                    opacity,
-                },
-            ]}
-        />
+        <View pointerEvents="none" style={svgStyles}>
+            <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+                <AnimatedRect
+                    x={strokeWidth / 2}
+                    y={strokeWidth / 2}
+                    width={W - strokeWidth}
+                    height={H - strokeWidth}
+                    rx={R}
+                    ry={R}
+                    strokeWidth={strokeWidth}
+                    fill="transparent"
+                    strokeDasharray={perimeter}
+                    animatedProps={animatedProps}
+                    strokeLinecap="round"
+                />
+            </Svg>
+        </View>
     );
 };
 
@@ -96,7 +132,7 @@ const styles = StyleSheet.create({
 });
 
 export const useLudoTimerColor = (props?: Omit<LudoTimerRingProps, 'size' | 'strokeWidth'>) => {
-    const [currentColor, setCurrentColor] = useState('rgba(255,255,255,0.2)');
+    const [currentColor, setCurrentColor] = React.useState('rgba(255,255,255,0.2)');
 
     useEffect(() => {
         if (!props?.isActive || !props?.turnStartTime || !props?.turnDuration) {
@@ -107,16 +143,12 @@ export const useLudoTimerColor = (props?: Omit<LudoTimerRingProps, 'size' | 'str
         const checkColor = () => {
             const currentServerTime = Date.now() - (props.serverTimeOffset || 0);
             const elapsed = currentServerTime - props.turnStartTime!;
-
             if (elapsed >= props.turnDuration!) {
                 setCurrentColor('#FF0000');
                 return;
             }
-
-            if (props.redAt && props.redAt > 0 && currentServerTime >= props.redAt) {
+            if (props.redAt && currentServerTime >= props.redAt) {
                 setCurrentColor('#FF3B30');
-            } else if (props.yellowAt && props.yellowAt > 0 && currentServerTime >= props.yellowAt) {
-                setCurrentColor('#FFCC00');
             } else {
                 setCurrentColor('#34C759');
             }
@@ -124,9 +156,8 @@ export const useLudoTimerColor = (props?: Omit<LudoTimerRingProps, 'size' | 'str
 
         checkColor();
         const intervalId = setInterval(checkColor, 1000);
-
         return () => clearInterval(intervalId);
-    }, [props?.isActive, props?.turnStartTime, props?.turnDuration, props?.yellowAt, props?.redAt, props?.serverTimeOffset]);
+    }, [props?.isActive, props?.turnStartTime, props?.turnDuration, props?.redAt, props?.serverTimeOffset]);
 
     return currentColor;
 };
