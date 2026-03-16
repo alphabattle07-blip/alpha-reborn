@@ -24,7 +24,7 @@ export interface LudoGameState {
     diceUsed: boolean[];
     waitingForRoll: boolean;
     winner: string | null;
-    log: string[];
+    log?: string[]; // Optional: stripped from server payloads to reduce payload size
     level: number;
     stateVersion?: number;
     pendingMoveId?: string;
@@ -71,7 +71,7 @@ export const rollDice = (state: LudoGameState): LudoGameState => {
         dice,
         diceUsed,
         waitingForRoll: false,
-        log: [...state.log, `Rolled [${dice.join(', ')}]`],
+        log: [...(state.log || []), `Rolled [${dice.join(', ')}]`],
     };
 };
 
@@ -202,13 +202,29 @@ export const getValidMoves = (state: LudoGameState): MoveAction[] => {
 };
 
 export const applyMove = (state: LudoGameState, move: MoveAction): LudoGameState => {
+    // Defensive guard: if state is stale or corrupted (e.g. server auto-played and turn switched)
+    // return state unchanged rather than crashing.
+    if (!state || !state.players || !state.diceUsed || !move || !move.diceIndices) {
+        console.warn('[applyMove] Stale or invalid state/move — skipping.');
+        return state;
+    }
+
     const player = state.players[state.currentPlayerIndex];
-    const newDiceUsed = [...state.diceUsed];
+    if (!player || !player.seeds) {
+        console.warn('[applyMove] Current player is undefined — skipping.');
+        return state;
+    }
+
+    const newDiceUsed = [...(state.diceUsed || [])];
     move.diceIndices.forEach(idx => newDiceUsed[idx] = true);
 
     const newPlayers = JSON.parse(JSON.stringify(state.players));
     const activePlayer = newPlayers[state.currentPlayerIndex];
-    const targetSeed = activePlayer.seeds[move.seedIndex];
+    const targetSeed = activePlayer?.seeds?.[move.seedIndex];
+    if (!targetSeed) {
+        console.warn('[applyMove] Target seed not found — skipping.');
+        return state;
+    }
 
     // Always track landing position (where the move logically ends)
     const oldPosition = targetSeed.position;
@@ -320,7 +336,7 @@ export const applyMove = (state: LudoGameState, move: MoveAction): LudoGameState
         waitingForRoll: waiting,
         dice: waiting ? [] : state.dice,
         winner: winner,
-        log: [...state.log, `Moved seed`],
+        log: [...(state.log || []), `Moved seed`],
     };
 };
 
@@ -331,6 +347,6 @@ export const passTurn = (state: LudoGameState): LudoGameState => {
         waitingForRoll: true,
         diceUsed: state.level >= 3 ? [false, false] : [false],
         dice: [],
-        log: [...state.log, `Turn passed`],
+        log: [...(state.log || []), `Turn passed`],
     };
 };

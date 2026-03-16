@@ -435,6 +435,10 @@ useEffect(() => {
         // Block input during turn transition animation
         if (frozenDice !== null) return;
 
+        // Stale-tap guard: drop any tap if the game state is not ready for a move.
+        // This prevents crashes when the server auto-played and switched turns while a tap was in-flight.
+        if (!gameState || !gameState.diceUsed || !Array.isArray(gameState.diceUsed) || gameState.waitingForRoll) return;
+
         if (tappedSeed) {
             if (tappedSeed.playerId !== 'p1') return;
             if (gameState.currentPlayerIndex !== 0) return;

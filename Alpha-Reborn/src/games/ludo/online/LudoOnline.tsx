@@ -148,14 +148,17 @@ const LudoOnline = () => {
         }
     }, [currentGame?.status]);
 
-    // Handle Game Polling
+    // Handle Game Polling — safety net ONLY for complete socket outages.
+    // Under normal conditions, socket deltas keep the state fresh, so this rarely fires.
     useEffect(() => {
         if (currentGame?.id) {
             const interval = setInterval(() => {
                 // Stop polling once game is completed
                 if (currentGame.status === 'COMPLETED' || gameOverProcessedRef.current) return;
+                // Skip if a socket event happened in the last 30 seconds (WebSocket is healthy)
+                if (Date.now() - lastActionTimeRef.current < 30000) return;
                 dispatch(fetchGameState(currentGame.id));
-            }, 15000); // Reduce poll frequency to 15s (fallback only)
+            }, 60000); // 60s fallback — only fires if socket is silent for 60s
             return () => clearInterval(interval);
         }
     }, [currentGame?.id, dispatch]);
@@ -237,17 +240,9 @@ const LudoOnline = () => {
                     newBoard.currentPlayerIndex = data.currentPlayerIndex;
                     newBoard.stateVersion = data.stateVersion;
                     shouldUpdate = true;
-                    // Reset the visual timer ring for the move phase.
-                    // The server will also send a 'turnStarted' event shortly, which will sync exactly.
-                    // This pre-emptive reset prevents a flash of the old timer state.
-                    if (!data.waitingForRoll && data.serverTime) {
-                        setTimerSync({
-                            turnStartTime: data.serverTime,
-                            turnDuration: 15000,
-                            redAt: data.serverTime + 10000,
-                            serverTimeOffset: Date.now() - data.serverTime,
-                        });
-                    }
+                    // NOTE: Timer is reset by the 'turnStarted' socket event, which the server
+                    // fires immediately after a phase change. We do NOT pre-empt it here to
+                    // avoid duplicate/conflicting timer state updates.
                 } else if (data.type === 'MOVE_PIECE' && data.move) {
                     try {
                        newBoard = applyMove(newBoard, data.move);

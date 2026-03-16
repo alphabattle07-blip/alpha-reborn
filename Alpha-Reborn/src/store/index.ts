@@ -33,9 +33,12 @@ export const store = configureStore({
   reducer: persistedReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
-      serializableCheck: {
-        ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
-      },
+      // Disabled: These dev-only checks deep-traverse the entire state tree on every dispatch.
+      // At high stateVersions (600+) they take 48ms+ each, exhausting the Android thread pool
+      // and causing java.lang.OutOfMemoryError: pthread_create failed.
+      // Both are automatically disabled in production builds anyway.
+      serializableCheck: false,
+      immutableCheck: false,
     }),
 });
 
