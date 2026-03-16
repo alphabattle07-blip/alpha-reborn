@@ -2,7 +2,17 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { Canvas, Image as SkiaImage, useImage, Circle, Group, Paint, Shadow } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { useSharedValue, withTiming, withSequence, withDelay, withRepeat, Easing, runOnJS, useDerivedValue } from 'react-native-reanimated';
+import {
+    useSharedValue,
+    useDerivedValue,
+    withTiming,
+    withRepeat,
+    withSequence,
+    withDelay,
+    Easing,
+    runOnJS,
+    cancelAnimation
+} from 'react-native-reanimated';
 import { LudoBoardData } from './LudoCoordinates';
 import { Path, Skia } from '@shopify/react-native-skia';
 import { playLudoSound } from '../useLudoSoundEffects';
@@ -132,6 +142,7 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
     const pulse = useSharedValue(0);
     const prevPosRef = useRef(currentPos);
 
+
     useEffect(() => {
         if (isActive) {
             pulse.value = withRepeat(
@@ -149,6 +160,13 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
         const oldPos = prevPosRef.current;
         const newPos = currentPos;
         prevPosRef.current = newPos;
+
+        // CRITICAL FIX: Always cancel pending animations before starting a new one.
+        // During rapid auto-play, if a new target arrives before the old 10-step hop finishes,
+        // the old sequence leaks in Skia GPU memory. This cleans it up instantly.
+        cancelAnimation(cx);
+        cancelAnimation(cy);
+        cancelAnimation(scale);
 
         if (oldPos === newPos) {
             cx.value = target.x;
@@ -181,6 +199,14 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
             return;
         }
 
+        // ====================================================================
+        // PER-TILE HOP ANIMATION (Restored)
+        // Seeds hop visually through each intermediate tile. Memory safety is
+        // ensured by cancelAnimation() above (line 167-169) which kills any
+        // pending sequences before new ones start. Sound is played once per
+        // move on the JS thread (no runOnJS inside worklets).
+        // ====================================================================
+
         const steps = [];
         const diff = landingPos - oldPos;
         if (diff > 0 && diff <= 12) {
@@ -188,6 +214,9 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
         } else {
             steps.push(landingPos);
         }
+
+        // Play one sound per move (on JS thread, before animation — no runOnJS needed)
+        playLudoSound('seedMove');
 
         const xSequence = steps.map((i, idx) => {
             const isLast = idx === steps.length - 1 && landingPos === newPos;
@@ -198,15 +227,11 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
             return withTiming(getTargetPixels(i, isLast).y, { duration: TILE_ANIMATION_DURATION, easing: Easing.linear });
         });
 
-        // Generate scale sequence for hopping
+        // Generate scale sequence for hopping (one bounce per tile)
         const scaleSequence: any[] = [];
         steps.forEach(() => {
             scaleSequence.push(withTiming(1.25, { duration: TILE_ANIMATION_DURATION / 2, easing: Easing.out(Easing.quad) }));
-            scaleSequence.push(withTiming(1.0, { duration: TILE_ANIMATION_DURATION / 2, easing: Easing.in(Easing.quad) }, (finished) => {
-                if (finished) {
-                    runOnJS(playLudoSound)('seedMove');
-                }
-            }));
+            scaleSequence.push(withTiming(1.0, { duration: TILE_ANIMATION_DURATION / 2, easing: Easing.in(Easing.quad) }));
         });
 
         if (landingPos !== newPos) {
