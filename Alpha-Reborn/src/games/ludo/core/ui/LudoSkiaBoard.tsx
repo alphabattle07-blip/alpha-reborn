@@ -142,6 +142,65 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
     const pulse = useSharedValue(0);
     const prevPosRef = useRef(currentPos);
 
+    // ===========================================
+    // UNIFIED PATH INTERPOLATOR STATE
+    // ===========================================
+    const pathProgress = useSharedValue<number>(1); // 1 = arrived
+    const pathX = useSharedValue<number[]>([target.x]);
+    const pathY = useSharedValue<number[]>([target.y]);
+
+    const renderedX = useDerivedValue(() => {
+        const prog = pathProgress.value;
+        const xs = pathX.value;
+        const len = xs.length;
+        if (len <= 1 || prog >= 1) return cx.value;
+
+        const exactStep = prog * (len - 1);
+        const stepIndex = Math.min(Math.floor(exactStep), len - 2);
+        const localProg = exactStep - stepIndex;
+        
+        return xs[stepIndex] + (xs[stepIndex + 1] - xs[stepIndex]) * localProg;
+    });
+
+    const renderedY = useDerivedValue(() => {
+        const prog = pathProgress.value;
+        const ys = pathY.value;
+        const len = ys.length;
+        if (len <= 1 || prog >= 1) return cy.value; 
+
+        const exactStep = prog * (len - 1);
+        const stepIndex = Math.min(Math.floor(exactStep), len - 2);
+        const localProg = exactStep - stepIndex;
+        
+        return ys[stepIndex] + (ys[stepIndex + 1] - ys[stepIndex]) * localProg;
+    });
+
+    const renderedRadius = useDerivedValue(() => {
+        const prog = pathProgress.value;
+        const len = pathX.value.length;
+        if (len <= 1 || prog >= 1) return scale.value * radius;
+
+        const exactStep = prog * (len - 1);
+        const localProg = exactStep % 1; // 0 to 1 for the current tile
+        // Math sine wave for pure bouncing: 0 -> 1 -> 0
+        const hopScale = 1 + Math.sin(localProg * Math.PI) * 0.25; 
+        
+        return (scale.value === 1 ? hopScale : scale.value) * radius;
+    });
+
+    // ===========================================
+    // CRITICAL: Unmount Cleanup Loop
+    // ===========================================
+    // Memory unmount loop safely terminates GPU animations when game exits
+    useEffect(() => {
+        return () => {
+            cancelAnimation(pulse);
+            cancelAnimation(cx);
+            cancelAnimation(cy);
+            cancelAnimation(scale);
+            cancelAnimation(pathProgress);
+        };
+    }, []);
 
     useEffect(() => {
         if (isActive) {
@@ -161,16 +220,16 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
         const newPos = currentPos;
         prevPosRef.current = newPos;
 
-        // CRITICAL FIX: Always cancel pending animations before starting a new one.
-        // During rapid auto-play, if a new target arrives before the old 10-step hop finishes,
-        // the old sequence leaks in Skia GPU memory. This cleans it up instantly.
+        // Clean up any pending animations from previous rapid moves
         cancelAnimation(cx);
         cancelAnimation(cy);
         cancelAnimation(scale);
+        cancelAnimation(pathProgress);
 
         if (oldPos === newPos) {
             cx.value = target.x;
             cy.value = target.y;
+            pathProgress.value = 1; // Snaps to end
             return;
         }
 
@@ -182,29 +241,27 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
                 withTiming(1.3, { duration: 200 }),
                 withTiming(1, { duration: 200 })
             );
+            pathProgress.value = 1;
             return;
         }
 
         if (newPos === -1) {
-            // Captured seed returning home. Wait for capturing seed to land!
+            // Captured seed returning home
             const delay = animationDelay || 0;
-            const houseAnim = withTiming(1, { duration: 400 }); // Normal speed for house return
             cx.value = withSequence(withDelay(delay, withTiming(target.x, { duration: 400 })));
             cy.value = withSequence(withDelay(delay, withTiming(target.y, { duration: 400 })));
-            // Pulse on return
             scale.value = withSequence(
                 withDelay(delay, withTiming(1.2, { duration: 200 })),
                 withTiming(1, { duration: 200 })
             );
+            pathProgress.value = 1;
             return;
         }
 
         // ====================================================================
-        // PER-TILE HOP ANIMATION (Restored)
-        // Seeds hop visually through each intermediate tile. Memory safety is
-        // ensured by cancelAnimation() above (line 167-169) which kills any
-        // pending sequences before new ones start. Sound is played once per
-        // move on the JS thread (no runOnJS inside worklets).
+        // UNIFIED PATH INTERPOLATOR
+        // Reduces 24+ withSequence arrays to EXACTLY 1 withTiming object per move.
+        // Drops C++ memory allocation so Skia can survive deep auto-play matches.
         // ====================================================================
 
         const steps = [];
@@ -215,56 +272,50 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
             steps.push(landingPos);
         }
 
-        // Play one sound per move (on JS thread, before animation — no runOnJS needed)
         playLudoSound('seedMove');
 
-        const xSequence = steps.map((i, idx) => {
-            const isLast = idx === steps.length - 1 && landingPos === newPos;
-            return withTiming(getTargetPixels(i, isLast).x, { duration: TILE_ANIMATION_DURATION, easing: Easing.linear });
-        });
-        const ySequence = steps.map((i, idx) => {
-            const isLast = idx === steps.length - 1 && landingPos === newPos;
-            return withTiming(getTargetPixels(i, isLast).y, { duration: TILE_ANIMATION_DURATION, easing: Easing.linear });
-        });
+        const xs = steps.map((i, idx) => getTargetPixels(i, idx === steps.length - 1 && landingPos === newPos).x);
+        const ys = steps.map((i, idx) => getTargetPixels(i, idx === steps.length - 1 && landingPos === newPos).y);
 
-        // Generate scale sequence for hopping (one bounce per tile)
-        const scaleSequence: any[] = [];
-        steps.forEach(() => {
-            scaleSequence.push(withTiming(1.25, { duration: TILE_ANIMATION_DURATION / 2, easing: Easing.out(Easing.quad) }));
-            scaleSequence.push(withTiming(1.0, { duration: TILE_ANIMATION_DURATION / 2, easing: Easing.in(Easing.quad) }));
-        });
+        // Prepend current pos so array represents Start -> A -> B -> End
+        const currentTargetPixels = getTargetPixels(oldPos, oldPos === newPos && oldPos >= 56);
+        xs.unshift(currentTargetPixels.x);
+        ys.unshift(currentTargetPixels.y);
+
+        pathX.value = xs;
+        pathY.value = ys;
+        
+        // Base targets become the landing destination of the linear walk
+        cx.value = xs[xs.length - 1];
+        cy.value = ys[ys.length - 1];
+        scale.value = 1;
+
+        const moveDuration = steps.length * TILE_ANIMATION_DURATION;
 
         if (landingPos !== newPos) {
-            // Capture! Add a jump to final position at the end of the sequence
-            xSequence.push(withTiming(getTargetPixels(newPos, true).x, { duration: 400, easing: Easing.out(Easing.quad) }));
-            ySequence.push(withTiming(getTargetPixels(newPos, true).y, { duration: 400, easing: Easing.out(Easing.quad) }));
-
-            // Big Hop for victory jump
-            scaleSequence.push(withTiming(1.5, { duration: 200, easing: Easing.out(Easing.quad) }));
-            scaleSequence.push(withTiming(1.0, { duration: 200, easing: Easing.in(Easing.quad) }));
+            // CAPTURE JUMP: Walk 0->1, then jump to the captured target
+            pathProgress.value = 0;
+            pathProgress.value = withTiming(1, { duration: moveDuration, easing: Easing.linear }, (finished) => {
+                if (finished) {
+                    const captureTarget = getTargetPixels(newPos, true);
+                    cx.value = withTiming(captureTarget.x, { duration: 400, easing: Easing.out(Easing.quad) });
+                    cy.value = withTiming(captureTarget.y, { duration: 400, easing: Easing.out(Easing.quad) });
+                    scale.value = withSequence(
+                        withTiming(1.5, { duration: 200, easing: Easing.out(Easing.quad) }),
+                        withTiming(1.0, { duration: 200, easing: Easing.in(Easing.quad) })
+                    );
+                }
+            });
+        } else {
+            // Normal move
+            pathProgress.value = 0;
+            pathProgress.value = withTiming(1, { duration: moveDuration, easing: Easing.linear });
         }
-
-        cx.value = withSequence(...(xSequence as [any, ...any[]]));
-        cy.value = withSequence(...(ySequence as [any, ...any[]]));
-        scale.value = withSequence(...(scaleSequence as [any, ...any[]]));
 
     }, [currentPos, landingPos, animationDelay, boardX, boardY, boardSize, stackIndex, stackSize]);
 
-    const transformArray = useMemo(() => [{ scale: 1 }], []);
-    const transform = useDerivedValue(() => {
-        transformArray[0].scale = scale.value;
-        return transformArray;
-    });
-
-    const originObj = useMemo(() => ({ x: 0, y: 0 }), []);
-    const origin = useDerivedValue(() => {
-        originObj.x = cx.value;
-        originObj.y = cy.value;
-        return originObj;
-    });
-    const indicatorScale = useDerivedValue(() => 1 + pulse.value * 0.4);
+    // Active indicator animation values
     const indicatorOpacity = useDerivedValue(() => pulse.value);
-    // Extracted from inline JSX to prevent GPU memory leak (hooks must not be called inside JSX)
     const pulseRadius = useDerivedValue(() => radius * (1.2 + pulse.value * 0.5));
     const pulseOpacity = useDerivedValue(() => (1 - pulse.value) * 0.5);
 
@@ -272,20 +323,19 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
         <Group>
             {/* Active Move Indicator */}
             <Group opacity={indicatorOpacity}>
-                <Circle cx={cx} cy={cy} r={radius * 1.5} color={color}>
+                <Circle cx={renderedX} cy={renderedY} r={radius * 1.5} color={color}>
                     <Paint style="stroke" strokeWidth={2} color={color} />
                 </Circle>
-                <Circle cx={cx} cy={cy} r={pulseRadius} color={color} opacity={pulseOpacity}>
+                <Circle cx={renderedX} cy={renderedY} r={pulseRadius} color={color} opacity={pulseOpacity}>
                     <Paint style="stroke" strokeWidth={1} color={color} />
                 </Circle>
             </Group>
 
-            <Group transform={transform} origin={origin}>
-                <Circle cx={cx} cy={cy} r={radius} color={color}>
-                    <Paint style="stroke" strokeWidth={1.5} color="white" />
-                    <Shadow dx={1} dy={2} blur={3} color="rgba(0,0,0,0.5)" />
-                </Circle>
-            </Group>
+            {/* Seed Body */}
+            <Circle cx={renderedX} cy={renderedY} r={renderedRadius} color={color}>
+                <Paint style="stroke" strokeWidth={1.5} color="white" />
+                <Shadow dx={1} dy={2} blur={3} color="rgba(0,0,0,0.5)" />
+            </Circle>
         </Group>
     );
 }, (prevProps, nextProps) => {

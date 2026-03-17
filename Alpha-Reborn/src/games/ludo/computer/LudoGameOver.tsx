@@ -1,9 +1,10 @@
 // LudoGameOver.tsx
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppDispatch } from '../../../store/hooks';
 import { updateGameStatsThunk } from '../../../store/thunks/gameStatsThunks';
+import Animated, { FadeIn, FadeOut, ZoomIn } from 'react-native-reanimated';
 
 const levels = [
     { label: "Apprentice (Easy)", value: 1, rating: 1250, reward: 10 },
@@ -66,14 +67,13 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
     }
 
     useEffect(() => {
-        // Recalculate if we haven't calculated YET, OR if we calculated for the WRONG online state
-        if (result && (!calculatedData || calculatedData.isOnline !== isOnline)) {
+        // Initial calculation when result is available and visible
+        if (result && !calculatedData) {
             let reward = 0;
             let totalChange = 0;
             let bonus = 0;
 
             if (isOnline) {
-                // Enforce static rewards for online matches
                 bonus = 25; // ONLINE_BATTLE_BONUS
                 reward = isWin ? 50 : -50; // ONLINE_WIN_PRIZE / ONLINE_LOSS_PENALTY
                 totalChange = bonus + reward;
@@ -109,7 +109,7 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
 
             onStatsUpdate?.(result, finalRating);
         }
-    }, [result, isWin, isLoss, level, dispatch, calculatedData, isOnline]);
+    }, [result, isWin, isLoss, isOnline, level, dispatch]); // removed calculatedData from deps
 
     const displayLevelReward = calculatedData?.levelReward ?? 0;
     const displayNewRating = calculatedData?.finalRating ?? playerRating;
@@ -123,64 +123,73 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
     };
 
     return (
-        <View style={styles.overlay}>
-            <View style={styles.container}>
-                {isWin && <Text style={styles.winText}>You Won!</Text>}
-                {isLoss && <Text style={styles.loseText}>You Lost!</Text>}
+        <Animated.View 
+            entering={FadeIn.duration(400)} 
+            exiting={FadeOut.duration(300)} 
+            style={styles.overlay}
+        >
+            <Animated.View 
+                entering={ZoomIn.delay(200).duration(500)}
+                style={styles.container}
+            >
+                <ScrollView contentContainerStyle={{ alignItems: 'center', width: '100%' }} showsVerticalScrollIndicator={false}>
+                    {isWin && <Text style={styles.winText}>You Won!</Text>}
+                    {isLoss && <Text style={styles.loseText}>You Lost!</Text>}
 
-                <Text style={styles.winnerText}>
-                    Winner: {isWin ? playerName : opponentName}
-                </Text>
+                    <Text style={styles.winnerText}>
+                        Winner: {isWin ? playerName : opponentName}
+                    </Text>
 
-                {(isWin || isOnline) && (
-                    <View style={styles.rewardSection}>
-                        <View style={styles.rewardRow}>
-                            <Text style={styles.rewardLabel}>Battle Bonus</Text>
-                            <Text style={styles.rewardValue}>
-                                <Ionicons name="trophy" size={16} color="#FFD700" /> +
-                                {displayBonus} R-Coin
-                            </Text>
-                        </View>
-
-                        {(!isOnline || isWin || isLoss) && (
+                    {(isWin || isOnline) && (
+                        <View style={styles.rewardSection}>
                             <View style={styles.rewardRow}>
-                                <Text style={styles.rewardLabel}>{getMatchRewardLabel()}</Text>
-                                <Text style={[styles.rewardValue, isOnline && !isWin && { color: '#ef5350' }]}>
-                                    <Ionicons name="trophy" size={16} color="#FFD700" /> {displayLevelReward > 0 ? '+' : ''}
-                                    {displayLevelReward} R-Coin
+                                <Text style={styles.rewardLabel}>Battle Bonus</Text>
+                                <Text style={styles.rewardValue}>
+                                    <Ionicons name="trophy" size={16} color="#FFD700" /> +
+                                    {displayBonus} R-Coin
                                 </Text>
                             </View>
-                        )}
 
-                        <View style={styles.rewardRow}>
-                            <Text style={styles.rewardLabel}>Rapid Rating</Text>
-                            <Text style={[styles.rewardValue, styles.totalRewardValue]}>
-                                <Ionicons name="medal" size={16} color="#FFD700" /> {initialRatingRef.current} {displayBonus + displayLevelReward >= 0 ? '+' : ''}{displayBonus + displayLevelReward} = {displayNewRating}
-                            </Text>
+                            {(!isOnline || isWin || isLoss) && (
+                                <View style={styles.rewardRow}>
+                                    <Text style={styles.rewardLabel}>{getMatchRewardLabel()}</Text>
+                                    <Text style={[styles.rewardValue, isOnline && !isWin && { color: '#ef5350' }]}>
+                                        <Ionicons name="trophy" size={16} color="#FFD700" /> {displayLevelReward > 0 ? '+' : ''}
+                                        {displayLevelReward} R-Coin
+                                    </Text>
+                                </View>
+                            )}
+
+                            <View style={styles.rewardRow}>
+                                <Text style={styles.rewardLabel}>Rapid Rating</Text>
+                                <Text style={[styles.rewardValue, styles.totalRewardValue]}>
+                                    <Ionicons name="medal" size={16} color="#FFD700" /> {initialRatingRef.current} {displayBonus + displayLevelReward >= 0 ? '+' : ''}{displayBonus + displayLevelReward} = {displayNewRating}
+                                </Text>
+                            </View>
                         </View>
-                    </View>
-                )}
+                    )}
 
-                <View style={styles.buttonContainer}>
-                    {onRematch && (
-                        <TouchableOpacity
-                            style={[styles.button, styles.rematchButton]}
-                            onPress={onRematch}
-                        >
-                            <Text style={styles.buttonText}>Rematch</Text>
-                        </TouchableOpacity>
-                    )}
-                    {onNewBattle && (
-                        <TouchableOpacity
-                            style={[styles.button, styles.newBattleButton]}
-                            onPress={onNewBattle}
-                        >
-                            <Text style={styles.buttonText}>New Battle</Text>
-                        </TouchableOpacity>
-                    )}
-                </View>
-            </View>
-        </View>
+                    <View style={styles.buttonContainer}>
+                        {onRematch && (
+                            <TouchableOpacity
+                                style={[styles.button, styles.rematchButton]}
+                                onPress={onRematch}
+                            >
+                                <Text style={styles.buttonText}>Rematch</Text>
+                            </TouchableOpacity>
+                        )}
+                        {onNewBattle && (
+                            <TouchableOpacity
+                                style={[styles.button, styles.newBattleButton]}
+                                onPress={onNewBattle}
+                            >
+                                <Text style={styles.buttonText}>New Battle</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </ScrollView>
+            </Animated.View>
+        </Animated.View>
     );
 };
 

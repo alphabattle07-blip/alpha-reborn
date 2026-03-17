@@ -40,6 +40,8 @@ class SocketService {
                 this.socket?.emit('register', this.userId);
             }
 
+            this.emitLocal('connect');
+
             // Re-join game room
             if (this.gameId) {
                 console.log('[SocketService] Rejoining game on connect:', this.gameId);
@@ -61,6 +63,7 @@ class SocketService {
 
         this.socket.on('disconnect', () => {
             console.log('[SocketService] Disconnected');
+            this.emitLocal('disconnect');
         });
 
         this.socket.on('connect_error', (err) => {
@@ -228,6 +231,14 @@ class SocketService {
     }
 
     // --- Subscription Management ---
+
+    onConnect(callback: () => void) {
+        return this.on('connect', callback);
+    }
+
+    onDisconnect(callback: () => void) {
+        return this.on('disconnect', callback);
+    }
 
     onOpponentMove(callback: (move: any) => void) {
         return this.on('opponent-move', callback);

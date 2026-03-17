@@ -176,6 +176,7 @@ type LudoGameProps = {
         serverTimeOffset?: number;
     };
     isOpponentRolling?: boolean;
+    isRolling?: boolean;
 };
 
 // --- Dice Positioning Configuration ---
@@ -196,6 +197,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     level,
     timerSync,
     isOpponentRolling,
+    isRolling: propIsRolling,
 }) => {
     const navigation = useNavigation();
     const [internalGameState, setInternalGameState] = useState<LudoGameState>(
@@ -208,35 +210,38 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     // --- Turn Transition: freeze dice display for 2s after a turn switch ---
     const [frozenDice, setFrozenDice] = useState<{ dice: number[]; diceUsed: boolean[]; playerIndex: number } | null>(null);
     const turnTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Sync internal state with prop if controlled (online mode)
+    useEffect(() => {
+        if (propGameState) {
+            // --- Detect opponent turn-switch (online) ---
+            // If the opponent just made their last move, internalGameState still holds their
+            // dice values. The new propGameState has dice=[] and it's now our turn.
+            const wasOpponentTurn = internalGameState?.currentPlayerIndex !== 0;
+            const isNowOurTurn = propGameState?.currentPlayerIndex === 0 && propGameState?.waitingForRoll;
+            const opponentHadDice = (internalGameState?.dice?.length || 0) > 0;
 
-// Sync internal state with prop if controlled (online mode)
-useEffect(() => {
-    if (propGameState) {
-        // --- Detect opponent turn-switch (online) ---
-        // If the opponent just made their last move, internalGameState still holds their
-        // dice values. The new propGameState has dice=[] and it's now our turn.
-        const wasOpponentTurn = internalGameState.currentPlayerIndex !== 0;
-        const isNowOurTurn = propGameState.currentPlayerIndex === 0 && propGameState.waitingForRoll;
-        const opponentHadDice = internalGameState.dice.length > 0;
-
-        if (wasOpponentTurn && isNowOurTurn && opponentHadDice && !propGameState.winner && frozenDice === null) {
-            // Freeze the opponent's dice on screen for 2s so the player can read the result
-            setFrozenDice({
-                dice: internalGameState.dice,
-                diceUsed: internalGameState.diceUsed.map(() => true),
-                playerIndex: internalGameState.currentPlayerIndex,
-            });
-            setInternalGameState(propGameState); // apply move position NOW
-            if (turnTransitionTimerRef.current) clearTimeout(turnTransitionTimerRef.current);
-            turnTransitionTimerRef.current = setTimeout(() => {
-                setFrozenDice(null);
-                turnTransitionTimerRef.current = null;
-            }, 2000);
-        } else {
-            setInternalGameState(propGameState);
+            if (wasOpponentTurn && isNowOurTurn && opponentHadDice && !propGameState.winner && frozenDice === null) {
+                // Freeze the opponent's dice on screen for 2s so the player can read the result
+                setFrozenDice({
+                    dice: internalGameState.dice || [],
+                    diceUsed: (internalGameState.diceUsed || []).map(() => true),
+                    playerIndex: internalGameState.currentPlayerIndex,
+                });
+                setInternalGameState(propGameState); // apply move position NOW
+                if (turnTransitionTimerRef.current) clearTimeout(turnTransitionTimerRef.current);
+                turnTransitionTimerRef.current = setTimeout(() => {
+                    setFrozenDice(null);
+                    turnTransitionTimerRef.current = null;
+                }, 2000);
+            } else {
+                // CRITICAL: If dice arrived for US while we were "rolling", stop the optimistic state
+                if (isNowOurTurn && propGameState.dice.length > 0 && !propGameState.waitingForRoll) {
+                    setIsRolling(false);
+                }
+                setInternalGameState(propGameState);
+            }
         }
-    }
-}, [propGameState]);
+    }, [propGameState]);
 
 
     // Clear frozen dice if the human player gets a new bonus roll (his own dice arrive)
@@ -277,7 +282,10 @@ useEffect(() => {
         const showHumanIndicators = isHumanTurn && !gameState.waitingForRoll && gameState.dice.length > 0 && !gameState.winner;
         const currentValidMoves = showHumanIndicators ? getValidMoves(gameState) : [];
 
+        if (!gameState.players || !Array.isArray(gameState.players)) return posMap;
+
         gameState.players.forEach((p) => {
+            if (!p) return;
             const isP1 = p.id === 'p1';
             posMap[p.id] = (p.seeds || []).map((s, idx) => {
                 const seedCanMove = showHumanIndicators && isP1 && currentValidMoves.some(m => m.seedIndex === idx);
@@ -304,35 +312,30 @@ useEffect(() => {
     const playerRank = useMemo(() => getRankFromRating(player.rating || 1200) || { icon: '🌱' }, [player.rating]);
     const opponentRank = useMemo(() => getRankFromRating(opponent.rating || 1500) || { icon: '🌱' }, [opponent.rating]);
 
-    // --- Optimistic Dice Rolling State (Online only) ---
-    const [isRolling, setIsRolling] = useState(false);
+    // --- Optimistic Dice Rolling State ---
+    // Use prop if provided (online), otherwise manage locally (offline)
+    const [localIsRolling, setLocalIsRolling] = useState(false);
+    const isRolling = propIsRolling !== undefined ? propIsRolling : localIsRolling;
+    const setIsRolling = propIsRolling !== undefined ? () => {} : setLocalIsRolling;
 
-    // Clear isRolling when real dice values arrive from server or turn switches
-    useEffect(() => {
-        if (isRolling) {
-            // Stop rolling if dice arrived, or if it's no longer our turn
-            if ((!gameState.waitingForRoll && gameState.dice.length > 0) || gameState.currentPlayerIndex !== 0) {
-                setIsRolling(false);
-            }
-        }
-    }, [isRolling, gameState.waitingForRoll, gameState.dice, gameState.currentPlayerIndex]);
-
-    // Emergency Failsafe: 5-second max duration for optimistic dice rolling
-    // Protects WebGL memory if a network packet is lost and the server never responds
+    // Emergency Failsafe: 3-second max duration (Reduced from 5s as per user requirement)
     useEffect(() => {
         if (isRolling) {
             const safetyTimeout = setTimeout(() => {
-                console.warn("[LudoCoreUI] 5s Emergency Timeout hit. Stopping optimistic roll to prevent GPU overload.");
-                setIsRolling(false);
-            }, 5000);
+                if (propIsRolling === undefined) {
+                    setLocalIsRolling(false);
+                }
+            }, 3000);
             return () => clearTimeout(safetyTimeout);
         }
-    }, [isRolling]);
+    }, [isRolling, propIsRolling]);
 
-    // Reset isRolling on turn change (e.g. opponent's turn)
+    // Reset local rolling on turn change
     useEffect(() => {
-        setIsRolling(false);
-    }, [gameState.currentPlayerIndex]);
+        if (propIsRolling === undefined) {
+            setLocalIsRolling(false);
+        }
+    }, [gameState.currentPlayerIndex, propIsRolling]);
 
     // --- Handlers ---
     const handleRollDice = useCallback(() => {

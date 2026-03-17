@@ -8,6 +8,7 @@ import Animated, {
     Easing,
     interpolateColor,
     useDerivedValue,
+    cancelAnimation,
 } from 'react-native-reanimated';
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
@@ -53,6 +54,13 @@ export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
     }, [W, H, R]);
 
     const progress = useSharedValue(isActive ? 1 : 0);
+
+    // ===========================================
+    // CRITICAL: Unmount Cleanup Loop
+    // ===========================================
+    useEffect(() => {
+        return () => cancelAnimation(progress);
+    }, []);
 
     useEffect(() => {
         if (!isActive || !turnStartTime || !turnDuration) {

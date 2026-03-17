@@ -17,6 +17,8 @@ import {
     withRepeat,
     Easing,
     useDerivedValue,
+    cancelAnimation,
+    runOnUI,
 } from 'react-native-reanimated';
 
 interface Ludo3DDieProps {
@@ -42,6 +44,11 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
     // --- Animation State ---
     // internalValue controls the visual number shown during the rolling animation
     const [internalValue, setInternalValue] = useState(value);
+    const lastIsRollingRef = useRef(isRolling);
+
+    useEffect(() => {
+        if (value > 0) setInternalValue(value);
+    }, [value]);
 
     // Shared values for physics
     const bounce = useSharedValue(0);
@@ -51,11 +58,24 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
     // Ref to manage the timeout loop for cleanup
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // ===========================================
+    // CRITICAL: Unmount Cleanup Loop
+    // ===========================================
+    // Reanimated leaks `withRepeat` and `withTiming` worklets if the component
+    // unmounts mid-animation (e.g. game navigation). A leaked `bounce` value
+    // causes the dice to be permanently displaced (-Y) in the NEXT match.
+    useEffect(() => {
+        return () => {
+            cancelAnimation(bounce);
+            cancelAnimation(rotation);
+            cancelAnimation(scale);
+        };
+    }, []);
+
     useEffect(() => {
         // --- INDEFINITE ROLLING MODE ---
-        // When isRolling is true and no real value yet, spin indefinitely
         if (isRolling && value <= 0) {
-            // Continuously looping bounce — never settles until real value arrives
+            // Continuously looping bounce
             bounce.value = withRepeat(
                 withSequence(
                     withTiming(-size * 0.5, { duration: 400, easing: Easing.out(Easing.quad) }),
@@ -77,7 +97,7 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
                 -1
             );
 
-            // Face switching loop — runs until cleanup
+            // Face switching loop
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
             const rollFace = () => {
                 setInternalValue(prev => {
@@ -94,6 +114,21 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
             };
         }
 
+        // --- IMMEDIATE STOP: If we were rolling and now we are NOT ---
+        if (!isRolling && value > 0) {
+            // Hard stop on UI thread to bypass React delay
+            const stopAnims = () => {
+                'worklet';
+                cancelAnimation(bounce);
+                cancelAnimation(rotation);
+                cancelAnimation(scale);
+                bounce.value = 0;
+                rotation.value = 0;
+                scale.value = 1;
+            };
+            runOnUI(stopAnims)();
+        }
+
         // GUARD: If the die is already used or value is 0, DO NOT animate.
         if (isUsed || value <= 0) {
             setInternalValue(value);
@@ -108,7 +143,8 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
         rotation.value = 0;
         scale.value = 1;
 
-        const TOTAL_DURATION = 1000;
+        // Punchier settle animation (reduced from 1000ms)
+        const TOTAL_DURATION = 400;
 
         bounce.value = withSequence(
             withTiming(-size * 0.8, { duration: TOTAL_DURATION * 0.3, easing: Easing.out(Easing.quad) }),
