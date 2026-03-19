@@ -195,11 +195,14 @@ const LudoOnline = () => {
             const unsubscribe = socketService.onGameStateUpdate((newState: any) => {
                 // Ignore updates once game is completed
                 if (gameOverProcessedRef.current) return;
-                // Update local store immediately
-                dispatch(setCurrentGame({
-                    ...currentGame,
-                    board: newState
-                }));
+                
+                // Update local store board only — avoids stale metadata overwriting status/players
+                if (currentGameRef.current) {
+                    dispatch(setCurrentGame({
+                        ...currentGameRef.current,
+                        board: newState
+                    }));
+                }
 
                 // If reconnection state provided remainingTime
                 if (newState.remainingTime !== undefined) {
@@ -366,7 +369,8 @@ const LudoOnline = () => {
             socketService.joinMatchChat(currentGame.id);
 
             const unsubscribeChatHistory = socketService.onChatHistory((payload: any) => {
-                if (payload.matchId === currentGame.id) {
+                const latestGame = currentGameRef.current;
+                if (latestGame && payload.matchId === latestGame.id) {
                     dispatch(setHistory(payload.messages || []));
                 }
             });
@@ -461,14 +465,17 @@ const LudoOnline = () => {
             const p1 = serverState.players && serverState.players[0];
             const p2 = serverState.players && serverState.players[1];
 
-            if (p1 && p2) {
-                const swappedPlayers = [
-                    { ...p2, id: 'p1' },
-                    { ...p1, id: 'p2' }
-                ];
+            // Robust Swap: Even if one player is null, we can still reconstruct enough for LudoCoreUI to not crash.
+            // LudoCoreUI needs 'p1' and 'p2' ids to render correctly.
+            const swappedPlayers = [
+                { ...(p2 || (serverState.players && serverState.players[1])), id: 'p1' },
+                { ...(p1 || (serverState.players && serverState.players[0])), id: 'p2' }
+            ].filter(p => p.id); // Ensure we don't have empty objects if possible
+
+            if (swappedPlayers.length > 0) {
                 processedState = {
                     ...serverState,
-                    players: swappedPlayers,
+                    players: swappedPlayers as any,
                     currentPlayerIndex: serverState.currentPlayerIndex === 1 ? 0 : 1,
                 };
             }

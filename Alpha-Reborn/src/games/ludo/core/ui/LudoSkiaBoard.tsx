@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { useWindowDimensions } from 'react-native';
+import { useWindowDimensions, View, Image, StyleSheet } from 'react-native';
 import { Canvas, Image as SkiaImage, useImage, Circle, Group, Paint, Shadow } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
@@ -429,6 +429,13 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
     // Ensures massive state update loops (e.g. from dice) cannot overwhelm WebGL texture memory
     const throttledPositions = useThrottledValue(positions, 33);
 
+    // CRITICAL MEMORY FIX: Pre-compile SVG string to avoid C++ leaky allocations on every render
+    const shieldSkPath = useMemo(() => {
+        const path = Skia.Path.MakeFromSVGString(SHIELD_PATH);
+        if (!path) console.warn("Failed to parse SHIELD_PATH");
+        return path;
+    }, []);
+
     // Scale board to make room for outer images
     // Using BOARD_SCALE constant
     const boardSize = canvasWidth * BOARD_SCALE;
@@ -538,7 +545,7 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
         onBoardPress(x, y, tappedSeed);
     };
 
-    if (!boardImage) return null;
+    if (!boardImageSource) return null;
 
     return (
         <GestureDetector
@@ -548,68 +555,43 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
                 .onEnd(({ x, y }) => runOnJS(handleTap)(x, y))
             }
         >
-            <Canvas style={{ width: canvasWidth, height: canvasHeight }}>
-                <SkiaImage
-                    image={boardImage}
-                    x={boardX}
-                    y={boardY}
-                    width={boardSize}
-                    height={boardSize}
-                    fit="fill"
+            <View style={{ width: canvasWidth, height: canvasHeight }}>
+                {/* Hardware Accelerated React Native Images (Prevents GPU Texture Memory Limits "TV Static") */}
+                <Image
+                    source={boardImageSource}
+                    style={{
+                        position: 'absolute',
+                        left: boardX,
+                        top: boardY,
+                        width: boardSize,
+                        height: boardSize,
+                    }}
+                    resizeMode="stretch"
+                />
+                <Image
+                    source={greenImageSource}
+                    style={{
+                        position: 'absolute',
+                        left: COLOR_IMAGE_POSITIONS.green.x * canvasWidth - sideImageSize / 2,
+                        top: COLOR_IMAGE_POSITIONS.green.y * canvasHeight - sideImageSize / 2,
+                        width: sideImageSize * 3,
+                        height: sideImageSize * 2.5,
+                    }}
+                    resizeMode="contain"
+                />
+                <Image
+                    source={blueImageSource}
+                    style={{
+                        position: 'absolute',
+                        left: COLOR_IMAGE_POSITIONS.blue.x * canvasWidth - sideImageSize / 2,
+                        top: COLOR_IMAGE_POSITIONS.blue.y * canvasHeight - sideImageSize / 2,
+                        width: sideImageSize * 3,
+                        height: sideImageSize * 2.5,
+                    }}
+                    resizeMode="contain"
                 />
 
-                {/* 
-                  Color images positioned using COLOR_IMAGE_POSITIONS constant.
-                  This allows manual tweaking of positions.
-                */}
-
-                {/* RED - HIDDEN */}
-                {/* {redImage && (
-                    <SkiaImage
-                        image={redImage}
-                        x={COLOR_IMAGE_POSITIONS.red.x * canvasWidth - sideImageSize / 2}
-                        y={COLOR_IMAGE_POSITIONS.red.y * canvasHeight - sideImageSize / 2}
-                        width={sideImageSize * 3}
-                        height={sideImageSize * 2.5}
-                        fit="contain"
-                    />
-                )} */}
-
-                {/* GREEN */}
-                {greenImage && (
-                    <SkiaImage
-                        image={greenImage}
-                        x={COLOR_IMAGE_POSITIONS.green.x * canvasWidth - sideImageSize / 2}
-                        y={COLOR_IMAGE_POSITIONS.green.y * canvasHeight - sideImageSize / 2}
-                        width={sideImageSize * 3}
-                        height={sideImageSize * 2.5}
-                        fit="contain"
-                    />
-                )}
-
-                {/* YELLOW - HIDDEN */}
-                {/* {yellowImage && (
-                    <SkiaImage
-                        image={yellowImage}
-                        x={COLOR_IMAGE_POSITIONS.yellow.x * canvasWidth - sideImageSize / 2}
-                        y={COLOR_IMAGE_POSITIONS.yellow.y * canvasHeight - sideImageSize / 2}
-                        width={sideImageSize * 3}
-                        height={sideImageSize * 2.5}
-                        fit="contain"
-                    />
-                )} */}
-
-                {/* BLUE */}
-                {blueImage && (
-                    <SkiaImage
-                        image={blueImage}
-                        x={COLOR_IMAGE_POSITIONS.blue.x * canvasWidth - sideImageSize / 2}
-                        y={COLOR_IMAGE_POSITIONS.blue.y * canvasHeight - sideImageSize / 2}
-                        width={sideImageSize * 3}
-                        height={sideImageSize * 2.5}
-                        fit="contain"
-                    />
-                )}
+                <Canvas style={{ position: 'absolute', top: 0, left: 0, width: canvasWidth, height: canvasHeight }}>
 
                 {/* Shield Icons for lower levels */}
                 {(level === undefined || level < 3) && LudoBoardData.shieldPositions.map((pos, idx) => (
@@ -622,13 +604,15 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
                     >
                         {/* Nested group for scaling around the center (-12, -12 for a 24x24 path) */}
                         <Group transform={[{ scale: (boardSize / 15 / 24) * SHIELD_USER_SCALE }]}>
-                            <Path
-                                path={SHIELD_PATH}
-                                color="rgba(255, 255, 255, 0.6)"
-                                transform={[{ translateX: -12 }, { translateY: -12 }]}
-                            >
-                                <Paint style="stroke" strokeWidth={2} color="rgba(0,0,0,0.3)" />
-                            </Path>
+                            {shieldSkPath && (
+                                <Path
+                                    path={shieldSkPath}
+                                    color="rgba(255, 255, 255, 0.6)"
+                                    transform={[{ translateX: -12 }, { translateY: -12 }]}
+                                >
+                                    <Paint style="stroke" strokeWidth={2} color="rgba(0,0,0,0.3)" />
+                                </Path>
+                            )}
                         </Group>
                     </Group>
                 ))}
@@ -649,6 +633,7 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
                     />
                 ))}
             </Canvas>
+            </View>
         </GestureDetector>
     );
 };
