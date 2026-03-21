@@ -15,6 +15,7 @@ export interface LudoPlayer {
     color: PlayerColor;
     seeds: LudoSeed[];
     lastProcessedMoveId?: string;
+    consecutiveNoSixes?: number;
 }
 
 export interface LudoGameState {
@@ -40,11 +41,13 @@ export const initializeGame = (p1Color: PlayerColor = 'red', p2Color: PlayerColo
                 id: 'p1',
                 color: p1Color,
                 seeds: Array.from({ length: 4 }).map((_, i) => ({ id: `${p1Color}-${i}`, position: HOUSE_POS, landingPos: HOUSE_POS, animationDelay: 0 })),
+                consecutiveNoSixes: 0,
             },
             {
                 id: 'p2',
                 color: p2Color,
                 seeds: Array.from({ length: 4 }).map((_, i) => ({ id: `${p2Color}-${i}`, position: HOUSE_POS, landingPos: HOUSE_POS, animationDelay: 0 })),
+                consecutiveNoSixes: 0,
             },
         ],
         currentPlayerIndex: 0,
@@ -63,11 +66,54 @@ export const rollDice = (state: LudoGameState): LudoGameState => {
     const d1 = Math.floor(Math.random() * 6) + 1;
     const d2 = Math.floor(Math.random() * 6) + 1;
 
-    const dice = state.level >= 3 ? [d1, d2] : [d1];
+    let dice = state.level >= 3 ? [d1, d2] : [d1];
     const diceUsed = state.level >= 3 ? [false, false] : [false];
+
+    // --- Pity Timer (Mercy Rule) ---
+    const newPlayers = JSON.parse(JSON.stringify(state.players));
+    const player = newPlayers[state.currentPlayerIndex];
+    let consecutiveNoSixes = player.consecutiveNoSixes || 0;
+    
+    const activeCount = player.seeds.filter((s: LudoSeed) => s.position !== HOUSE_POS && s.position !== FINISH_POS).length;
+
+    if (activeCount === 0) {
+        if (!dice.includes(6)) {
+            consecutiveNoSixes++;
+
+            // Progressive probability boost:
+            // Attempt 1: natural ~16.6% (no boost)
+            // Attempt 2: +10% extra chance
+            // Attempt 3: +20% extra chance
+            // Attempt 4: +40% extra chance
+            // Attempt 5: guaranteed 6
+            let forceSix = false;
+            if (consecutiveNoSixes >= 5) {
+                forceSix = true;
+            } else if (consecutiveNoSixes === 4 && Math.random() < 0.40) {
+                forceSix = true;
+            } else if (consecutiveNoSixes === 3 && Math.random() < 0.20) {
+                forceSix = true;
+            } else if (consecutiveNoSixes === 2 && Math.random() < 0.10) {
+                forceSix = true;
+            }
+
+            if (forceSix) {
+                dice[0] = 6;
+                consecutiveNoSixes = 0;
+            }
+        } else {
+            consecutiveNoSixes = 0; // Naturally rolled a 6
+        }
+    } else {
+        // Player has active pieces, timer remains 0
+        consecutiveNoSixes = 0;
+    }
+    
+    player.consecutiveNoSixes = consecutiveNoSixes;
 
     return {
         ...state,
+        players: newPlayers,
         dice,
         diceUsed,
         waitingForRoll: false,
@@ -279,8 +325,8 @@ export const applyMove = (state: LudoGameState, move: MoveAction): LudoGameState
 
                     // Calculate delay based on how many steps the capturing seed takes
                     const steps = oldPosition === HOUSE_POS ? 1 : Math.max(0, move.targetPos - oldPosition);
-                    // 200ms per tile (TILE_ANIMATION_DURATION)
-                    capturedOpponentSeed.animationDelay = steps * 200;
+                    // 300ms per tile (TILE_ANIMATION_DURATION)
+                    capturedOpponentSeed.animationDelay = steps * 300;
 
                     // AS PER AGGRESSIVE MODE: Capturing seed moves to finish! (Only for Warrior level and above)
                     if (state.level >= 3) {

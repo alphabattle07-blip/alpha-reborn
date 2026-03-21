@@ -75,6 +75,17 @@ const LudoOnline = () => {
     const animationLockRef = useRef<boolean>(false);
     const diceStateRef = useRef<'IDLE' | 'ROLLING' | 'RESULT'>('IDLE');
 
+    // --- Step 1: Per-Seed Interaction Lock (Lift & Pulse) ---
+    // Tracks seeds that the user tapped and are waiting for server confirmation
+    const [pendingSeedIndices, setPendingSeedIndices] = useState<number[]>([]);
+
+    // --- Step 2: Optimistic Versioning ---
+    // Track the local board version so we can drop stale server updates during animation
+    const localStateVersionRef = useRef<number>(0);
+
+    // Debounce guard: prevents multiple rapid reconnects from each triggering state recovery
+    const reconnectDebounceRef = useRef<any>(null);
+
     // Ref to always hold the latest currentGame — prevents stale closures in socket listeners
     const currentGameRef = useRef(currentGame);
     useEffect(() => { currentGameRef.current = currentGame; }, [currentGame]);
@@ -215,6 +226,10 @@ const LudoOnline = () => {
                         serverTimeOffset: Date.now() - (newState.serverTime || Date.now())
                     });
                 }
+                
+                // Always release locks on a full state update, as it usually means a turn timeout or reconnect
+                animationLockRef.current = false;
+                setPendingSeedIndices([]);
             });
 
             // 3. Listen for turn starts (Timer Sync)
@@ -241,7 +256,7 @@ const LudoOnline = () => {
 
                 console.log(`[LudoEvent] TYPE: ${data.type} | ID: ${data.eventId || 'N/A'}`);
 
-                // 2. High-Priority Dice Handling
+                // 3. Animation Lock Layer (for MOVE_PIECE)
                 if (data.type === 'DICE_ROLLING_STARTED') {
                     const myServerIndex = isPlayer1 ? 0 : 1;
                     if (data.rollingPlayerIndex !== myServerIndex) {
@@ -255,19 +270,47 @@ const LudoOnline = () => {
                 }
 
                 if (data.type === 'ROLL_DICE') {
-                    setIsOpponentRolling(false);
-                    setIsRolling(false); // Stop local rolling
+                    // ── Dedicated roll result path (NEVER falls into move logic) ──
+                    setIsRolling(false);           // Clears YOUR spinning dice
+                    setIsOpponentRolling(false);   // Already done by DICE_ROLLING_STARTED counterpart, but keep for safety
                     diceStateRef.current = 'RESULT';
-                    // ROLL_RESULT interrupts EVERYTHING
                     pendingStateRef.current = null;
+                    lastActionTimeRef.current = Date.now();
+
+                    // Apply dice values + phase directly onto the current board
+                    const latestGameForRoll = currentGameRef.current;
+                    if (latestGameForRoll) {
+                        const currentBoardForRoll = typeof latestGameForRoll.board === 'string'
+                            ? JSON.parse(latestGameForRoll.board)
+                            : latestGameForRoll.board;
+
+                        const rollBoard = {
+                            ...currentBoardForRoll,
+                            dice: data.dice || [],
+                            diceUsed: data.diceUsed || [],
+                            waitingForRoll: data.waitingForRoll ?? false,
+                            currentPlayerIndex: data.currentPlayerIndex ?? currentBoardForRoll.currentPlayerIndex,
+                            stateVersion: data.stateVersion ?? (currentBoardForRoll.stateVersion || 0) + 1,
+                        };
+
+                        // Step 2: Update version watermark
+                        if (data.stateVersion) localStateVersionRef.current = data.stateVersion;
+
+                        dispatch(setCurrentGame({
+                            ...latestGameForRoll,
+                            board: rollBoard
+                        }));
+                    }
+                    return; // ← early return: never touch animation lock or move logic for a roll
                 }
 
+
                 // 3. Animation Lock Layer (for MOVE_PIECE)
-                // We no longer DROP packets (that causes desync)
-                // but we keep the lock flag to prevent local user spam during animations
                 if (data.type === 'MOVE_PIECE') {
-                    if (animationLockRef.current) {
-                        console.warn("[LudoSync] Processing MOVE during active lock (forced sync)");
+                    // It's normal for the lock to be active if WE initiated the move (handleMove sets it).
+                    // We only warn if the opponent's move arrived while our UI was locked unexpectedly.
+                    if (animationLockRef.current && data.actionPlayerIndex !== (isPlayer1 ? 0 : 1)) {
+                        console.warn("[LudoSync] Processing Opponent MOVE during active lock (forced strict sync)");
                     }
                     animationLockRef.current = true;
                 }
@@ -282,14 +325,7 @@ const LudoOnline = () => {
                 let newBoard = { ...currentBoard };
                 let shouldUpdate = false;
 
-                if (data.type === 'ROLL_DICE') {
-                    newBoard.dice = data.dice;
-                    newBoard.waitingForRoll = data.waitingForRoll;
-                    newBoard.diceUsed = data.diceUsed;
-                    newBoard.currentPlayerIndex = data.currentPlayerIndex;
-                    newBoard.stateVersion = data.stateVersion;
-                    shouldUpdate = true;
-                } else if (data.type === 'MOVE_PIECE' && data.move) {
+                if (data.type === 'MOVE_PIECE' && data.move) {
                     try {
                        newBoard = applyMove(newBoard, data.move);
                        // Server wins any disagreements
@@ -304,12 +340,26 @@ const LudoOnline = () => {
                                newBoard.players[data.actionPlayerIndex].lastProcessedMoveId = data.lastProcessedMoveId;
                            }
                        }
+
+                       // --- Step 3: Unlock per-seed lock on server ack ---
+                       // Find which seed was moved by looking at the server data
+                       if (data.move && data.move.seedIndex !== undefined) {
+                           setPendingSeedIndices(prev => prev.filter(id => id !== data.move.seedIndex));
+                           console.log(`[LudoLock] Released seed ${data.move.seedIndex}`);
+                       } else if (data.actionSeedIndex !== undefined) {
+                           // Fallback to our custom field if move object isn't flat
+                           setPendingSeedIndices(prev => prev.filter(id => id !== data.actionSeedIndex));
+                           console.log(`[LudoLock] Released seed ${data.actionSeedIndex} (fallback)`);
+                       }
+
+                       if (data.stateVersion) localStateVersionRef.current = data.stateVersion;
+                       pendingStateRef.current = null;
                        
                        shouldUpdate = true;
                        
-                       // Unlock animation after a delay (e.g. 1s per step - approximate)
+                       // Unlock animation after a delay (approx 300ms per step)
                        const moveSteps = data.move.targetPos - data.move.sourcePos;
-                       const animTime = Math.max(500, Math.min(2000, Math.abs(moveSteps) * 200));
+                       const animTime = Math.max(500, Math.min(3000, Math.abs(moveSteps) * 300));
                        setTimeout(() => {
                            animationLockRef.current = false;
                        }, animTime);
@@ -331,6 +381,9 @@ const LudoOnline = () => {
                             newBoard.players[data.actionPlayerIndex].lastProcessedMoveId = data.lastProcessedMoveId;
                         }
                     }
+
+                    if (data.stateVersion) localStateVersionRef.current = data.stateVersion;
+                    pendingStateRef.current = null;
                     
                     shouldUpdate = true;
                 }
@@ -345,10 +398,33 @@ const LudoOnline = () => {
 
             // 3.6 Reconnection Recovery: Full sync when socket reconnects
             const unsubscribeConnect = socketService.onConnect(() => {
-                console.log("[LudoSync] Socket RECONNECTED - Triggering full recovery");
-                socketService.recoverLudoGame(currentGame.id);
-                // Also fetch full state via polling as a backup
-                dispatch(fetchGameState(currentGame.id));
+                console.log("[LudoSync] Socket RECONNECTED - Waiting 800ms to stabilize before recovery");
+
+                // CRITICAL FIX: Debounce recovery — a mobile socket can fire 'connect' 3x in 2s.
+                // Without this guard, we reset the watermark 3 times and accept 3 stale snapshots,
+                // causing the "3 rollbacks" behavior.
+                if (reconnectDebounceRef.current) {
+                    clearTimeout(reconnectDebounceRef.current);
+                }
+
+                reconnectDebounceRef.current = setTimeout(() => {
+                    reconnectDebounceRef.current = null;
+
+                    // Clear stuck rolling/animation state ONCE (not on every connect event)
+                    setIsRolling(false);
+                    setIsOpponentRolling(false);
+                    diceStateRef.current = 'IDLE';
+                    animationLockRef.current = false;
+
+                    // CRITICAL FIX: Only reset the eventId watermark AFTER the socket has stabilized.
+                    // Resetting it immediately on every 'connect' means stale recovery responses
+                    // from previous reconnect attempts are not dropped.
+                    lastEventIdRef.current = 0;
+
+                    socketService.recoverLudoGame(currentGame.id);
+                    // Also fetch full state via polling as a backup
+                    dispatch(fetchGameState(currentGame.id));
+                }, 800); // Wait 800ms — if socket drops again, we cancel and restart the timer
             });
 
             // 4. Listen for game ended (forfeit, normal win)
@@ -385,6 +461,11 @@ const LudoOnline = () => {
             // Instant game connection bypasses match countdown logic like Whot does
 
             return () => {
+                // Cancel any pending reconnect recovery to prevent state updates after unmount
+                if (reconnectDebounceRef.current) {
+                    clearTimeout(reconnectDebounceRef.current);
+                    reconnectDebounceRef.current = null;
+                }
                 unsubscribe();
                 unsubscribeTurn();
                 unsubscribeActionUpdate();
@@ -454,10 +535,18 @@ const LudoOnline = () => {
     // --- Game State Transformation ---
     // LudoCoreUI always expects 'p1' to be the local player.
     // We need to map the server state (logical players) to the visual state (p1/p2).
+
+    // PERF FIX: Parse JSON only when the board string reference changes, not on every render.
+    // Doing JSON.parse inside the visualGameState memo caused it to fire on every Redux update
+    // (even timer ticks), blocking the JS thread and causing missed socket pong responses.
+    const parsedBoard = useMemo(() => {
+        if (!currentGame?.board) return null;
+        return typeof currentGame.board === 'string' ? JSON.parse(currentGame.board) : currentGame.board;
+    }, [currentGame?.board]);
+
     const visualGameState = useMemo(() => {
-        if (!currentGame) return null;
-        const board = typeof currentGame.board === 'string' ? JSON.parse(currentGame.board) : currentGame.board;
-        const serverState = (board as unknown as LudoGameState) || initializeGame('blue', 'green');
+        if (!currentGame || !parsedBoard) return null;
+        const serverState = (parsedBoard as unknown as LudoGameState) || initializeGame('blue', 'green');
 
         // Swap server state if we are Player 2
         let processedState = serverState;
@@ -491,14 +580,12 @@ const LudoOnline = () => {
             if (timeSinceAction > 10000) {
                 pendingStateRef.current = null;
             } else {
-                // Check if the server has "caught up"
-                // The server must explicitly acknowledge the move we just made
-                // OR the server has explicitly sent a new dice result (bonus roll)
+                // Check if the server has explicitly sent a new dice result (bonus roll)
                 const isServerEquivalent =
                     (processedState.players[processedState.currentPlayerIndex]?.lastProcessedMoveId === pendingStateRef.current.pendingMoveId) ||
                     (processedState.currentPlayerIndex !== pendingStateRef.current.currentPlayerIndex) ||
                     (processedState.waitingForRoll !== pendingStateRef.current.waitingForRoll && processedState.dice.length === 0) ||
-                    (!processedState.waitingForRoll && processedState.dice.length > 0); // NEW: Overrule pending move if server has explicit dice result
+                    (!processedState.waitingForRoll && processedState.dice.length > 0); 
 
                 if (isServerEquivalent || !pendingStateRef.current.pendingMoveId) {
                     // Server matched our optimistic expectation! Clear pending state.
@@ -517,11 +604,21 @@ const LudoOnline = () => {
         // Obsolete function, replaced by handleRoll and handleMove
     };
 
+    const triggerRollback = useCallback(() => {
+        // Rollback removed due to pure event-driven architecture
+    }, []);
+
     const handleRoll = () => {
         console.log("[LudoSync] User triggered ROLL");
         // Block if already rolling OR if an animation is locking the UI
         if (!currentGame || !userProfile || !visualGameState || isRolling || animationLockRef.current) {
             console.log(`[LudoSync] Roll blocked: cur=${!!currentGame}, prof=${!!userProfile}, vis=${!!visualGameState}, rolling=${isRolling}, lock=${animationLockRef.current}`);
+            return;
+        }
+
+        // CRITICAL: Block if socket is disconnected — don't start spinning with no server
+        if (!socketService.isConnected()) {
+            console.warn(`[LudoSync] Roll blocked: Socket disconnected. Waiting for reconnect.`);
             return;
         }
 
@@ -553,7 +650,23 @@ const LudoOnline = () => {
             return;
         }
 
-        // Set the lock locally to prevent double-taps
+        // CRITICAL: Block if socket is disconnected — don't allow piece movement offline
+        if (!socketService.isConnected()) {
+            console.warn(`[LudoSync] Move blocked: Socket disconnected. Waiting for reconnect.`);
+            return;
+        }
+
+        // --- Step 1: Per-Seed Interaction Lock ---
+        // Prevent double-tapping the same seed while its move result is in-flight
+        if (move.seedIndex !== undefined && pendingSeedIndices.includes(move.seedIndex)) {
+            console.log(`[LudoSync] Move blocked: Seed ${move.seedIndex} is already locked (in-flight)`);
+            return;
+        }
+        if (move.seedIndex !== undefined) {
+            setPendingSeedIndices(prev => [...prev, move.seedIndex]);
+        }
+
+        // Set the global animation lock locally to prevent double-taps on ANY seed
         animationLockRef.current = true;
         
         lastActionTimeRef.current = Date.now();
@@ -562,26 +675,24 @@ const LudoOnline = () => {
         const actionId = `move_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
         const moveWithId = { ...move, moveId: actionId };
 
-        // Store optimistic state so rubber-banding keeps showing our local animation
-        const optimisticState = applyMove(visualGameState, moveWithId);
-        (optimisticState as any).pendingMoveId = actionId;
-        pendingStateRef.current = optimisticState;
-
         try {
             socketService.emitAction(currentGame.id, 'ludo', { type: 'MOVE_PIECE', move: moveWithId, moveId: actionId });
             
-            // Failsafe unlock: if the server never responds to our move, unlock after 3s
+            // Failsafe: If the server silently ignores the move (e.g., turn timeout race condition)
+            // or the network drops the packet, we must unlock the UI eventually.
             setTimeout(() => {
                 if (animationLockRef.current) {
-                    // Check if state has moved on
+                    console.log("[LudoSync] Failsafe: Releasing stuck animation lock");
                     animationLockRef.current = false;
+                    setPendingSeedIndices(prev => prev.filter(id => id !== move.seedIndex));
                 }
-            }, 3000);
+            }, 5000); // 5s should be way more than enough for a server ping
 
         } catch (error) {
-            // If emit fails, clear pending state to revert to server state
             animationLockRef.current = false;
-            pendingStateRef.current = null;
+            if (move.seedIndex !== undefined) {
+                setPendingSeedIndices(prev => prev.filter(id => id !== move.seedIndex));
+            }
             console.error("Failed to emit move", error);
         }
     };
@@ -627,10 +738,12 @@ const LudoOnline = () => {
         dispatch(clearCurrentGame());
         // Reset matchmaking ref so it can restart
         hasStartedMatchmaking.current = false;
-        // Reset pending state
+        // Reset pending state and all new intent-architecture refs
         pendingStateRef.current = null;
         lastActionTimeRef.current = 0;
         gameOverProcessedRef.current = false;
+        setPendingSeedIndices([]);
+        localStateVersionRef.current = 0;
         setIsOpponentRolling(false);
         setTimerSync(null);
         // Restart matchmaking — will show "Looking for Opponent" UI
@@ -693,6 +806,8 @@ const LudoOnline = () => {
                     timerSync={timerSync || undefined}
                     isOpponentRolling={isOpponentRolling}
                     isRolling={isRolling}
+                    pendingSeedIndices={pendingSeedIndices}
+                    localPlayerId={isPlayer1 ? 'p1' : 'p2'}
                     onGameOver={() => { }} // Handled by status in update
                 />
 
@@ -757,6 +872,27 @@ const styles = StyleSheet.create({
         fontSize: 24,
         marginTop: 10,
         fontWeight: '600'
+    },
+    // Step 4: Reconciliation Toast
+    reconcileToast: {
+        position: 'absolute',
+        top: '45%', // Center-ish
+        alignSelf: 'center',
+        backgroundColor: 'rgba(0,0,0,0.85)',
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        borderRadius: 25,
+        flexDirection: 'row',
+        alignItems: 'center',
+        zIndex: 9999,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+    },
+    reconcileToastText: {
+        color: 'white',
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 8,
     },
 });
 

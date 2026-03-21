@@ -8,10 +8,12 @@ import Animated, {
     Easing,
     interpolateColor,
     useDerivedValue,
+    useAnimatedStyle,
     cancelAnimation,
 } from 'react-native-reanimated';
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
+const AnimatedView = Animated.createAnimatedComponent(View);
 
 interface LudoTimerRingProps {
     isActive: boolean;
@@ -36,6 +38,7 @@ export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
     isActive,
     turnStartTime = 0,
     turnDuration = 15000,
+    yellowAt = 0,
     redAt = 0,
     serverTimeOffset = 0,
     size = 100,
@@ -84,15 +87,24 @@ export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
         }
     }, [isActive, turnStartTime, turnDuration, serverTimeOffset]);
 
+    const isWarningZone = useDerivedValue(() => {
+        if (!isActive || !turnStartTime) return false;
+        const currentServerTime = Date.now() - serverTimeOffset;
+        const threshold = redAt || (turnStartTime + turnDuration * 0.7);
+        return currentServerTime >= threshold;
+    });
+
     const strokeColor = useDerivedValue(() => {
         if (!isActive) return '#555555';
+        if (isWarningZone.value) return '#FF3B30';
+        
         const remainingMs = progress.value * turnDuration;
-        const redThreshold = 5000; // Warning starts at 5s remaining
+        const yellowThreshold = (turnDuration - (yellowAt - turnStartTime)) || 8000;
 
         return interpolateColor(
             remainingMs,
-            [0, redThreshold, redThreshold + 1000],
-            ['#FF0000', '#FF3B30', '#34C759']
+            [0, yellowThreshold, yellowThreshold + 1000],
+            ['#FF3B30', '#FFCC00', '#34C759']
         );
     });
 
@@ -100,6 +112,16 @@ export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
         return {
             strokeDashoffset: -perimeter * (1 - progress.value),
             stroke: strokeColor.value,
+        };
+    });
+
+    const containerStyle = useAnimatedStyle(() => {
+        if (!isWarningZone.value) return { transform: [{ scale: 1 }] };
+        
+        // Simple pulsing effect in warning zone
+        const pulse = 1 + Math.sin(Date.now() / 200) * 0.03;
+        return {
+            transform: [{ scale: pulse }]
         };
     });
 
@@ -111,7 +133,7 @@ export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
     if (!isActive) return null;
 
     return (
-        <View pointerEvents="none" style={svgStyles}>
+        <AnimatedView pointerEvents="none" style={[svgStyles, containerStyle]}>
             <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
                 <AnimatedRect
                     x={strokeWidth / 2}
@@ -127,7 +149,7 @@ export const LudoTimerRing: React.FC<LudoTimerRingProps> = ({
                     strokeLinecap="round"
                 />
             </Svg>
-        </View>
+        </AnimatedView>
     );
 };
 

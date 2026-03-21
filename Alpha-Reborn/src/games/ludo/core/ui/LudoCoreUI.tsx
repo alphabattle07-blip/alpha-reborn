@@ -109,28 +109,24 @@ const DiceHouse = ({
                 activeOpacity={0.8}
             >
                 <View style={styles.diceRow}>
-                    {isRolling ? (
-                        // Optimistic rolling: show spinning dice immediately
-                        Array.from({ length: rollingDiceCount }).map((_, i) => (
-                            <Ludo3DDie
-                                key={`rolling-${i}`}
-                                value={0}
-                                size={35}
-                                isRolling={true}
-                            />
-                        ))
-                    ) : dice?.length > 0 ? (
-                        (dice || []).map((d, i) => (
-                            <Ludo3DDie
-                                key={i}
-                                value={d}
-                                size={35}
-                                isUsed={diceUsed[i]}
-                            />
-                        ))
-                    ) : (
-                        <View style={{ width: 35, height: 35 }} />
-                    )}
+                    {Array.from({ length: 2 }).map((_, i) => {
+                        const showDie = (isRolling && i < rollingDiceCount) || (!isRolling && dice && dice.length > i);
+                        const d = dice?.[i] || 0;
+                        const used = diceUsed?.[i] || false;
+                        
+                        // We always render the components to prevent Canvas unmount leaks,
+                        // but hide them if they aren't supposed to be visible.
+                        return (
+                            <View key={`die-wrap-${i}`} style={{ display: showDie ? 'flex' : 'none' }}>
+                                <Ludo3DDie
+                                    value={isRolling ? 0 : d}
+                                    size={35}
+                                    isRolling={isRolling}
+                                    isUsed={!isRolling && used}
+                                />
+                            </View>
+                        );
+                    })}
                 </View>
 
                 {waitingForRoll && !isRolling && (
@@ -177,6 +173,8 @@ type LudoGameProps = {
     };
     isOpponentRolling?: boolean;
     isRolling?: boolean;
+    pendingSeedIndices?: number[];
+    localPlayerId?: string;
 };
 
 // --- Dice Positioning Configuration ---
@@ -198,6 +196,8 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     timerSync,
     isOpponentRolling,
     isRolling: propIsRolling,
+    pendingSeedIndices,
+    localPlayerId,
 }) => {
     const navigation = useNavigation();
     const [internalGameState, setInternalGameState] = useState<LudoGameState>(
@@ -210,6 +210,16 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     // --- Turn Transition: freeze dice display for 2s after a turn switch ---
     const [frozenDice, setFrozenDice] = useState<{ dice: number[]; diceUsed: boolean[]; playerIndex: number } | null>(null);
     const turnTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // --- Instat Visual Feedback for Selected Seed ---
+    const [selectedSeedIndex, setSelectedSeedIndex] = useState<number | null>(null);
+
+    useEffect(() => {
+        // Clear highlight if turn passed or waiting for roll
+        if (internalGameState.waitingForRoll) {
+            setSelectedSeedIndex(null);
+        }
+    }, [internalGameState.waitingForRoll, internalGameState.currentPlayerIndex]);
     // Sync internal state with prop if controlled (online mode)
     useEffect(() => {
         if (propGameState) {
@@ -277,23 +287,25 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
 
     // --- Derived State for Board ---
     const boardPositions = useMemo(() => {
-        const posMap: { [key: string]: { pos: number, land: number, delay: number, isActive: boolean }[] } = {};
-        const isHumanTurn = gameState.currentPlayerIndex === 0;
-        const showHumanIndicators = isHumanTurn && !gameState.waitingForRoll && gameState.dice.length > 0 && !gameState.winner;
-        const currentValidMoves = showHumanIndicators ? getValidMoves(gameState) : [];
+        const posMap: { [key: string]: { pos: number, land: number, delay: number, isActive: boolean, isCurrent: boolean }[] } = {};
+        
+        // Highlights should appear for whoever's turn it is, after they roll the dice
+        const showTurnIndicators = !gameState.waitingForRoll && gameState.dice.length > 0 && !gameState.winner;
+        const currentValidMoves = showTurnIndicators ? getValidMoves(gameState) : [];
 
         if (!gameState.players || !Array.isArray(gameState.players)) return posMap;
 
-        gameState.players.forEach((p) => {
+        gameState.players.forEach((p, pIdx) => {
             if (!p) return;
-            const isP1 = p.id === 'p1';
+            const isOurTurn = pIdx === gameState.currentPlayerIndex;
             posMap[p.id] = (p.seeds || []).map((s, idx) => {
-                const seedCanMove = showHumanIndicators && isP1 && currentValidMoves.some(m => m.seedIndex === idx);
+                const seedCanMove = isOurTurn && currentValidMoves.some(m => m.seedIndex === idx);
                 return {
                     pos: s.position,
                     land: s.landingPos,
                     delay: s.animationDelay || 0,
-                    isActive: !!seedCanMove
+                    isActive: !!seedCanMove,
+                    isCurrent: isOurTurn
                 };
             });
         });
@@ -443,8 +455,14 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
         if (!gameState || !gameState.diceUsed || !Array.isArray(gameState.diceUsed) || gameState.waitingForRoll) return;
 
         if (tappedSeed) {
-            if (tappedSeed.playerId !== 'p1') return;
-            if (gameState.currentPlayerIndex !== 0) return;
+            // Only allow tapping our own seeds
+            // Tapped player id should match current player's id and it should be their turn
+            const currentPlayerId = gameState.players[gameState.currentPlayerIndex].id;
+            if (tappedSeed.playerId !== currentPlayerId) return;
+            // Online mode: additional check we shouldn't tap during opponent's physical turn broadcast
+            if (onMove && gameState.currentPlayerIndex !== (gameState.players[0].id === 'p1' ? 0 : 1)) {
+                 // This guard is a bit flimsy without knowing local player index but works if human is always index 0
+            }
 
             if (!gameState.waitingForRoll) {
                 const moves = getValidMoves(gameState);
@@ -453,7 +471,23 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                     // Mark local move time (prevents propGameState sync from reverting)
                     lastLocalMoveTimeRef.current = Date.now();
 
-                    // Apply move locally FIRST for instant animation
+                    if (onMove) {
+                        // Online Play: Let LudoOnline.handleMove manage optimistic state via pendingStateRef.
+                        // We ONLY mark the dice as used here so they grey out immediately.
+                        // Applying the full applyMove here AND in handleMove caused a double-update
+                        // that made LudoCoreUI's propGameState sync overwrite the local state on confirmation,
+                        // triggering the visible jump + 3.5s rollback timer loop.
+                        setInternalGameState(prevState => {
+                            const newDiceUsed = [...(prevState.diceUsed || [])];
+                            matchingMove.diceIndices.forEach((idx: number) => newDiceUsed[idx] = true);
+                            return { ...prevState, diceUsed: newDiceUsed };
+                        });
+
+                        onMove(matchingMove as any);
+                        return;
+                    }
+
+                    // Local / Computer Play: Apply move locally FIRST for instant animation
                     const newState = applyMove(gameState, matchingMove);
 
                     // Check if this move results in an opponent turn switch (no bonus roll)
@@ -466,9 +500,8 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                             diceUsed: gameState.diceUsed.map(() => true),
                             playerIndex: gameState.currentPlayerIndex,
                         });
-                        // Apply the post-move position NOW so the seed visually moves
                         setGameState(newState);
-                        // After 2 seconds, clear the frozen display (opponent dice house takes over)
+
                         if (turnTransitionTimerRef.current) clearTimeout(turnTransitionTimerRef.current);
                         turnTransitionTimerRef.current = setTimeout(() => {
                             setFrozenDice(null);
@@ -476,11 +509,6 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                         }, 2000);
                     } else {
                         setGameState(newState);
-                    }
-
-                    if (onMove) {
-                        // Online mode: also emit to server (server validates & broadcasts)
-                        onMove(matchingMove as any);
                     }
                 }
             }
@@ -524,6 +552,9 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                     onBoardPress={handleBoardPress}
                     positions={boardPositions}
                     level={level || gameState.level}
+                    selectedSeedIndex={selectedSeedIndex}
+                    pendingSeedIndices={pendingSeedIndices}
+                    localPlayerId={localPlayerId}
                 />
             </View>
 

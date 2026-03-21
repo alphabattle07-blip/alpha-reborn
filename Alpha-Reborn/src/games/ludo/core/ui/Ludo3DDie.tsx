@@ -18,7 +18,7 @@ import {
     Easing,
     useDerivedValue,
     cancelAnimation,
-    runOnUI,
+    SharedValue,
 } from 'react-native-reanimated';
 
 interface Ludo3DDieProps {
@@ -28,6 +28,29 @@ interface Ludo3DDieProps {
     isRolling?: boolean; // Indefinite spin mode (waiting for server result)
     style?: ViewStyle;
 }
+
+// --- Isolated Pip Component ---
+// We render each pip in its own component. This safely isolates `useDerivedValue` 
+// preventing "Rules of Hooks" crashes that occur when using hooks inside an inline .map() loop.
+const PipSpot = ({ spot, internalValue, pipRadius, pipColor }: { 
+    spot: { id: string, cx: number, cy: number, visibleOn: number[] }, 
+    internalValue: SharedValue<number>, 
+    pipRadius: number, 
+    pipColor: string 
+}) => {
+    const pipOpacity = useDerivedValue(() => {
+        return spot.visibleOn.includes(internalValue.value) ? 1 : 0;
+    });
+
+    return (
+        <Group opacity={pipOpacity}>
+            <Circle cx={spot.cx} cy={spot.cy} r={pipRadius} color={pipColor}>
+                <Shadow dx={0} dy={1} blur={0.5} color="rgba(255,255,255,0.5)" />
+                <Shadow dx={0} dy={-0.5} blur={1} color="black" inner />
+            </Circle>
+        </Group>
+    );
+};
 
 export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
     value,
@@ -43,11 +66,11 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
 
     // --- Animation State ---
     // internalValue controls the visual number shown during the rolling animation
-    const [internalValue, setInternalValue] = useState(value);
+    const internalValue = useSharedValue(value > 0 ? value : 1);
     const lastIsRollingRef = useRef(isRolling);
 
     useEffect(() => {
-        if (value > 0) setInternalValue(value);
+        if (value > 0) internalValue.value = value;
     }, [value]);
 
     // Shared values for physics
@@ -100,11 +123,9 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
             // Face switching loop
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
             const rollFace = () => {
-                setInternalValue(prev => {
-                    let next;
-                    do { next = Math.floor(Math.random() * 6) + 1; } while (next === prev);
-                    return next;
-                });
+                let next;
+                do { next = Math.floor(Math.random() * 6) + 1; } while (next === internalValue.value);
+                internalValue.value = next;
                 timeoutRef.current = setTimeout(rollFace, 80 + Math.random() * 40);
             };
             rollFace();
@@ -116,22 +137,18 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
 
         // --- IMMEDIATE STOP: If we were rolling and now we are NOT ---
         if (!isRolling && value > 0) {
-            // Hard stop on UI thread to bypass React delay
-            const stopAnims = () => {
-                'worklet';
-                cancelAnimation(bounce);
-                cancelAnimation(rotation);
-                cancelAnimation(scale);
-                bounce.value = 0;
-                rotation.value = 0;
-                scale.value = 1;
-            };
-            runOnUI(stopAnims)();
+            // Instantly stop animations on JS thread bridging
+            cancelAnimation(bounce);
+            cancelAnimation(rotation);
+            cancelAnimation(scale);
+            bounce.value = 0;
+            rotation.value = 0;
+            scale.value = 1;
         }
 
         // GUARD: If the die is already used or value is 0, DO NOT animate.
         if (isUsed || value <= 0) {
-            setInternalValue(value);
+            if (value > 0) internalValue.value = value;
             bounce.value = 0;
             rotation.value = 0;
             scale.value = 1;
@@ -172,15 +189,13 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
 
         const rollFace = () => {
             if (elapsedTime >= TOTAL_DURATION) {
-                setInternalValue(value);
+                internalValue.value = value;
                 return;
             }
 
-            setInternalValue(prev => {
-                let next;
-                do { next = Math.floor(Math.random() * 6) + 1; } while (next === prev);
-                return next;
-            });
+            let next;
+            do { next = Math.floor(Math.random() * 6) + 1; } while (next === internalValue.value);
+            internalValue.value = next;
 
             elapsedTime += currentDelay;
             currentDelay = Math.min(currentDelay * 1.2, 250);
@@ -195,60 +210,31 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
     }, [value, size, isUsed, isRolling]);
 
     // Derived transform for the Skia Group
-    const transformArray = useMemo(() => [
-        { translateY: 0 },
-        { rotate: 0 },
-        { scale: 1 }
-    ], []);
-    
     const transform = useDerivedValue(() => {
-        transformArray[0].translateY = bounce.value;
-        transformArray[1].rotate = rotation.value;
-        transformArray[2].scale = scale.value;
-        return transformArray;
+        return [
+            { translateY: bounce.value },
+            { rotate: rotation.value },
+            { scale: scale.value }
+        ];
     });
 
-    // --- Pip Calculation (Based on internalValue) ---
-    const pips = useMemo(() => {
-        const center = size / 2;
-        const left = padding;
-        const right = size - padding;
-        const top = padding;
-        const bottom = size - padding;
+    // --- UI Thread Pip Calculation ---
+    const center = size / 2;
+    const left = padding;
+    const right = size - padding;
+    const top = padding;
+    const bottom = size - padding;
 
-        const positions: { cx: number; cy: number }[] = [];
-        const add = (cx: number, cy: number) => positions.push({ cx, cy });
-
-        // Use internalValue for display, default to 1 if something goes wrong
-        const val = internalValue > 0 ? internalValue : 1;
-
-        switch (val) {
-            case 1:
-                add(center, center);
-                break;
-            case 2:
-                add(left, bottom); add(right, top);
-                break;
-            case 3:
-                add(left, bottom); add(center, center); add(right, top);
-                break;
-            case 4:
-                add(left, top); add(right, top);
-                add(left, bottom); add(right, bottom);
-                break;
-            case 5:
-                add(left, top); add(right, top);
-                add(center, center);
-                add(left, bottom); add(right, bottom);
-                break;
-            case 6:
-                add(left, top); add(right, top);
-                add(left, center); add(right, center);
-                add(left, bottom); add(right, bottom);
-                break;
-        }
-        return positions;
-    }, [internalValue, size, padding]);
+    // Spots definitions (7 typical spots)
+    const spots = [
+        { id: 'tl', cx: left, cy: top, visibleOn: [2, 3, 4, 5, 6] },
+        { id: 'tr', cx: right, cy: top, visibleOn: [4, 5, 6] },
+        { id: 'cl', cx: left, cy: center, visibleOn: [6] },
+        { id: 'cr', cx: right, cy: center, visibleOn: [6] },
+        { id: 'bl', cx: left, cy: bottom, visibleOn: [4, 5, 6] },
+        { id: 'br', cx: right, cy: bottom, visibleOn: [2, 3, 4, 5, 6] },
+        { id: 'cc', cx: center, cy: center, visibleOn: [1, 3, 5] },
+    ];
 
     // Colors
     const startColor = isUsed ? '#d6d6d6' : '#ffffff';
@@ -283,14 +269,15 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
                         <Shadow dx={2} dy={2} blur={3} color="rgba(0,0,0,0.2)" inner />
                     </RoundedRect>
 
-                    {/* Pips */}
-                    {pips.map((p, i) => (
-                        <Group key={i}>
-                            <Circle cx={p.cx} cy={p.cy} r={pipRadius} color={pipColor}>
-                                <Shadow dx={0} dy={1} blur={0.5} color="rgba(255,255,255,0.5)" />
-                                <Shadow dx={0} dy={-0.5} blur={1} color="black" inner />
-                            </Circle>
-                        </Group>
+                    {/* Pips rendered statically, opacity controlled via SharedValue */}
+                    {spots.map((spot) => (
+                        <PipSpot
+                            key={spot.id}
+                            spot={spot}
+                            internalValue={internalValue}
+                            pipRadius={pipRadius}
+                            pipColor={pipColor}
+                        />
                     ))}
                 </Group>
             </Canvas>

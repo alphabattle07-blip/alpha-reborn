@@ -28,6 +28,10 @@ class SocketService {
         this.setupBaseListeners();
     }
 
+    isConnected(): boolean {
+        return this.socket?.connected === true;
+    }
+
     private setupBaseListeners() {
         if (!this.socket) return;
 
@@ -70,35 +74,100 @@ class SocketService {
             console.error('[SocketService] Connection error:', err.message);
         });
 
-        // Opponent move handler
-        this.socket.on('opponent-move', (move: any) => {
-            this.emitLocal('opponent-move', move);
+        // ─── UNIFIED GAME EVENT BRIDGE ───────────────────────────────────────────
+        // ─── UNIFIED GAME EVENT BRIDGE ───────────────────────────────────────────
+        // The server emits all Ludo events as: gameEvent { eventId, stateVersion, type, payload, serverTime }
+        // We unwrap them here so the rest of the app can subscribe to named events
+        // (ludoActionUpdate, turnStarted, etc.) without knowing the envelope structure.
+        this.socket.on('gameEvent', (event: any) => {
+            if (!event) return;
+
+            const { type, payload, eventId, stateVersion, serverTime } = event;
+            if (!type) return;
+
+            console.log(`[SocketBridge] Received ${type} | ID: ${eventId || 'N/A'}`);
+
+            switch (type) {
+                case 'LUDO_ACTION_UPDATE':
+                    // Flatten envelope into the payload shape the listener expects
+                    this.emitLocal('ludoActionUpdate', {
+                        ...payload,
+                        eventId,
+                        stateVersion,
+                        serverTime,
+                    });
+                    break;
+
+                case 'TURN_STARTED':
+                    this.emitLocal('turnStarted', {
+                        ...payload,
+                        eventId,
+                        stateVersion,
+                        serverTime,
+                    });
+                    break;
+
+                case 'DICE_ROLLING_STARTED':
+                    // Route through ludoActionUpdate channel so existing handler picks it up
+                    this.emitLocal('ludoActionUpdate', {
+                        type: 'DICE_ROLLING_STARTED',
+                        ...payload,
+                        eventId,
+                    });
+                    break;
+
+                case 'GAME_STATE_UPDATE':
+                    // Full-board sync (e.g. after turn timeout auto-play)
+                    this.emitLocal('gameStateUpdate', payload, serverTime);
+                    break;
+
+                case 'GAME_ENDED':
+                    this.emitLocal('gameEnded', payload);
+                    break;
+
+                default:
+                    // Forward unknown event types for future extensibility
+                    this.emitLocal(`gameEvent:${type}`, event);
+                    break;
+            }
         });
 
-        // Game state sync
-        this.socket.on('gameStateUpdate', (payload: any) => {
-            const board = payload?.board || payload;
-            const serverTime = payload?.serverTime;
-            this.emitLocal('gameStateUpdate', board, serverTime);
+        // Legacy listeners retained as fallbacks:
+        // - gameStateUpdate: still used by recoverLudoGame (direct socket.emit from server)
+        // - gameEnded / gameForfeit: kept for non-Ludo games and direct emits
+        this.socket.on('ludoActionUpdate', (data: any) => {
+            // Legacy flat event — only fires if server emits it directly (not via broadcastGameEvent)
+            this.emitLocal('ludoActionUpdate', data);
         });
 
         this.socket.on('turnStarted', (data: any) => {
             this.emitLocal('turnStarted', data);
         });
 
-        this.socket.on('ludoActionUpdate', (data: any) => {
-            this.emitLocal('ludoActionUpdate', data);
+
+
+        // Legacy direct-emit listeners (not via gameEvent envelope)
+        // gameStateUpdate: used by recoverLudoGame recovery path (socket.emit directly, not broadcastGameEvent)
+        this.socket.on('gameStateUpdate', (payload: any) => {
+            const board = payload?.board || payload;
+            const serverTime = payload?.serverTime;
+            this.emitLocal('gameStateUpdate', board, serverTime);
         });
 
-        // Game ended (normal win or forfeit)
+        // gameEnded / gameForfeit: direct emits for non-Ludo games or legacy paths
         this.socket.on('gameEnded', (data: any) => {
-            console.log('[SocketService] Received gameEnded:', data);
+            console.log('[SocketService] Received gameEnded (direct):', data);
             this.emitLocal('gameEnded', data);
         });
 
         this.socket.on('gameForfeit', (data: any) => {
-            console.log('[SocketService] Received gameForfeit:', data);
+            console.log('[SocketService] Received gameForfeit (direct):', data);
             this.emitLocal('gameEnded', data);
+        });
+
+        // Opponent move handler (non-Ludo games)
+        this.socket.on('opponent-move', (move: any) => {
+            this.emitLocal('opponent-move', move);
         });
 
         // Match Ready Handshake events

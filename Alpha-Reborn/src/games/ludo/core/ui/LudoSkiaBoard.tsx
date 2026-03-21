@@ -70,7 +70,7 @@ const SIDE_IMAGE_SCALE = 0.137; // Size of the side images relative to canvas (a
 
 const BOARD_IMAGE_WIDTH = 1024;
 const BOARD_IMAGE_HEIGHT = 1024;
-const TILE_ANIMATION_DURATION = 200;
+const TILE_ANIMATION_DURATION = 300; // Adjusted for a slower, more deliberate pacing per tile
 
 const SHIELD_PATH = "M 12 2 L 4 5 L 4 11 C 4 16.1 7.4 20.8 12 22 C 16.6 20.8 20 16.1 20 11 L 20 5 L 12 2 Z";
 
@@ -97,7 +97,7 @@ const applyRadialOffset = (base: { x: number, y: number }, index: number, total:
 };
 
 // Memoized Seed to prevent React re-renders when other seeds move
-const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landingPos, animationDelay, isActive, boardX, boardY, boardSize, color, radius, colorName, canvasWidth, canvasHeight, stackIndex, stackSize }: { id: string, playerId: string, seedSubIndex: number, currentPos: number, landingPos: number, animationDelay: number, isActive: boolean, boardX: number, boardY: number, boardSize: number, color: string, radius: number, colorName: 'red' | 'yellow' | 'blue' | 'green', canvasWidth: number, canvasHeight: number, stackIndex: number, stackSize: number }) => {
+const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landingPos, animationDelay, isActive, isPending, isSelected, boardX, boardY, boardSize, color, radius, colorName, canvasWidth, canvasHeight, stackIndex, stackSize }: { id: string, playerId: string, seedSubIndex: number, currentPos: number, landingPos: number, animationDelay: number, isActive: boolean, isPending: boolean, isSelected?: boolean, boardX: number, boardY: number, boardSize: number, color: string, radius: number, colorName: 'red' | 'yellow' | 'blue' | 'green', canvasWidth: number, canvasHeight: number, stackIndex: number, stackSize: number }) => {
     const getTargetPixels = (stepIndex: number, isFinal: boolean = false) => {
         let norm = { x: 0.5, y: 0.5 };
 
@@ -140,7 +140,12 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
     const cy = useSharedValue(target.y);
     const scale = useSharedValue(1);
     const pulse = useSharedValue(0);
+    const shadowOpacity = useSharedValue(0);
     const prevPosRef = useRef(currentPos);
+
+    const liftedShadowColor = useDerivedValue(() => {
+        return `rgba(0,0,0,${shadowOpacity.value})`;
+    });
 
     // ===========================================
     // UNIFIED PATH INTERPOLATOR STATE
@@ -199,8 +204,38 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
             cancelAnimation(cy);
             cancelAnimation(scale);
             cancelAnimation(pathProgress);
+            cancelAnimation(shadowOpacity);
         };
     }, []);
+
+    // Lift & Pulse "Pending Server Confirm" Animation
+    useEffect(() => {
+        if (isPending) {
+            // Lift instantly
+            shadowOpacity.value = withTiming(0.4, { duration: 150 });
+            // Breathing effect
+            scale.value = withRepeat(
+                withSequence(
+                    withTiming(1.2, { duration: 300, easing: Easing.inOut(Easing.ease) }),
+                    withTiming(1.05, { duration: 600, easing: Easing.inOut(Easing.ease) })
+                ),
+                -1,
+                true
+            );
+        } else {
+            shadowOpacity.value = withTiming(0, { duration: 150 });
+            // If the piece is NOT about to move, smooth scale back down
+            if (currentPos === prevPosRef.current && currentPos === landingPos) {
+                cancelAnimation(scale);
+                scale.value = withTiming(1, { duration: 200 });
+            } else {
+                // IMMEDIATE SNAP: Fixes the bug where the seed wouldn't bounce during motion
+                // because scale was stuck at 1.15 from the breathing animation.
+                cancelAnimation(scale);
+                scale.value = 1;
+            }
+        }
+    }, [isPending, currentPos, landingPos]);
 
     useEffect(() => {
         if (isActive) {
@@ -234,12 +269,12 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
         }
 
         if (oldPos === -1) {
-            cx.value = withTiming(target.x, { duration: 400 });
-            cy.value = withTiming(target.y, { duration: 400 });
+            cx.value = withTiming(target.x, { duration: 250 });
+            cy.value = withTiming(target.y, { duration: 250 });
             // Small hop when leaving house
             scale.value = withSequence(
-                withTiming(1.3, { duration: 200 }),
-                withTiming(1, { duration: 200 })
+                withTiming(1.3, { duration: 120 }),
+                withTiming(1, { duration: 120 })
             );
             pathProgress.value = 1;
             return;
@@ -248,11 +283,11 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
         if (newPos === -1) {
             // Captured seed returning home
             const delay = animationDelay || 0;
-            cx.value = withSequence(withDelay(delay, withTiming(target.x, { duration: 400 })));
-            cy.value = withSequence(withDelay(delay, withTiming(target.y, { duration: 400 })));
+            cx.value = withSequence(withDelay(delay, withTiming(target.x, { duration: 250 })));
+            cy.value = withSequence(withDelay(delay, withTiming(target.y, { duration: 250 })));
             scale.value = withSequence(
-                withDelay(delay, withTiming(1.2, { duration: 200 })),
-                withTiming(1, { duration: 200 })
+                withDelay(delay, withTiming(1.2, { duration: 120 })),
+                withTiming(1, { duration: 120 })
             );
             pathProgress.value = 1;
             return;
@@ -309,7 +344,7 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
         } else {
             // Normal move
             pathProgress.value = 0;
-            pathProgress.value = withTiming(1, { duration: moveDuration, easing: Easing.linear });
+            pathProgress.value = withTiming(1, { duration: moveDuration, easing: Easing.out(Easing.quad) });
         }
 
     }, [currentPos, landingPos, animationDelay, boardX, boardY, boardSize, stackIndex, stackSize]);
@@ -321,20 +356,30 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
 
     return (
         <Group>
-            {/* Active Move Indicator */}
-            <Group opacity={indicatorOpacity}>
-                <Circle cx={renderedX} cy={renderedY} r={radius * 1.5} color={color}>
-                    <Paint style="stroke" strokeWidth={2} color={color} />
+            {/* Selected Indicator removed to make movement feel direct */}
+            {false && isSelected && (
+                <Circle cx={renderedX} cy={renderedY} r={radius * 1.6} color="rgba(255, 255, 255, 0.8)">
+                    <Shadow dx={0} dy={0} blur={5} color="white" />
                 </Circle>
-                <Circle cx={renderedX} cy={renderedY} r={pulseRadius} color={color} opacity={pulseOpacity}>
-                    <Paint style="stroke" strokeWidth={1} color={color} />
-                </Circle>
-            </Group>
+            )}
+
+            {/* Active Move Indicator (Pulsing ring) */}
+            {isActive && !isSelected && (
+                <Group opacity={indicatorOpacity}>
+                    <Circle cx={renderedX} cy={renderedY} r={radius * 1.5} color={color}>
+                        <Paint style="stroke" strokeWidth={2} color={color} />
+                    </Circle>
+                    <Circle cx={renderedX} cy={renderedY} r={pulseRadius} color={color} opacity={pulseOpacity}>
+                        <Paint style="stroke" strokeWidth={1} color={color} />
+                    </Circle>
+                </Group>
+            )}
 
             {/* Seed Body */}
             <Circle cx={renderedX} cy={renderedY} r={renderedRadius} color={color}>
                 <Paint style="stroke" strokeWidth={1.5} color="white" />
                 <Shadow dx={1} dy={2} blur={3} color="rgba(0,0,0,0.5)" />
+                <Shadow dx={0} dy={10} blur={4} color={liftedShadowColor} />
             </Circle>
         </Group>
     );
@@ -345,10 +390,12 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
         prevProps.currentPos === nextProps.currentPos &&
         prevProps.landingPos === nextProps.landingPos &&
         prevProps.isActive === nextProps.isActive &&
+        prevProps.isPending === nextProps.isPending &&
         prevProps.animationDelay === nextProps.animationDelay &&
         prevProps.stackIndex === nextProps.stackIndex &&
         prevProps.stackSize === nextProps.stackSize &&
-        prevProps.boardSize === nextProps.boardSize
+        prevProps.boardSize === nextProps.boardSize &&
+        prevProps.isSelected === nextProps.isSelected
     );
 });
 
@@ -414,7 +461,18 @@ const getSeedPixelPosition = (seedPos: number, playerId: string, seedSubIndex: n
     return base;
 };
 
-const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWidth, height: propHeight }: { onBoardPress: any, positions: { [key: string]: { pos: number, land: number, delay: number, isActive: boolean }[] }, level?: number, width?: number, height?: number }) => {
+type LudoSkiaBoardProps = {
+    onBoardPress: (x: number, y: number, seed?: { playerId: string; seedIndex: number; position: number } | null) => void;
+    positions: { [key: string]: { pos: number, land: number, delay: number, isActive: boolean }[] };
+    level?: number;
+    width?: number; // Optional custom width
+    height?: number; // Optional custom height
+    selectedSeedIndex?: number | null;
+    pendingSeedIndices?: number[];
+    localPlayerId?: string;
+};
+
+const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWidth, height: propHeight, selectedSeedIndex, pendingSeedIndices: propPendingSeedIndices, localPlayerId }: LudoSkiaBoardProps) => {
     const boardImage = useImage(boardImageSource);
     const blueImage = useImage(blueImageSource);
     const greenImage = useImage(greenImageSource);
@@ -490,6 +548,7 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
                     landingPos: item.land,
                     animationDelay: item.delay,
                     isActive: item.isActive,
+                    isPending: playerId === (localPlayerId || 'p1') && !!propPendingSeedIndices?.includes(index),
                     color,
                     colorName,
                     stackIndex: 0,
@@ -621,6 +680,7 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
                     <AnimatedSeed
                         key={s.id}
                         {...s}
+                        isSelected={s.playerId === (localPlayerId || 'p1') && s.seedSubIndex === selectedSeedIndex}
                         boardX={boardX}
                         boardY={boardY}
                         boardSize={boardSize}
@@ -641,7 +701,10 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
 // Memoize the entire board to prevent re-rendering when LudoCoreUI updates (e.g., timer ticking)
 export const LudoSkiaBoard = React.memo(LudoSkiaBoardComponent, (prevProps, nextProps) => {
     // Basic prop checks
-    if (prevProps.level !== nextProps.level || prevProps.width !== nextProps.width || prevProps.height !== nextProps.height) {
+    if (prevProps.level !== nextProps.level || 
+        prevProps.width !== nextProps.width || 
+        prevProps.height !== nextProps.height ||
+        prevProps.selectedSeedIndex !== nextProps.selectedSeedIndex) {
         return false;
     }
 
