@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useWindowDimensions, View, Image, StyleSheet } from 'react-native';
-import { Canvas, Image as SkiaImage, useImage, Circle, Group, Paint, Shadow } from '@shopify/react-native-skia';
+import { Canvas, Circle, Group, Paint, Shadow } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
     useSharedValue,
@@ -473,11 +473,10 @@ type LudoSkiaBoardProps = {
 };
 
 const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWidth, height: propHeight, selectedSeedIndex, pendingSeedIndices: propPendingSeedIndices, localPlayerId }: LudoSkiaBoardProps) => {
-    const boardImage = useImage(boardImageSource);
-    const blueImage = useImage(blueImageSource);
-    const greenImage = useImage(greenImageSource);
-    // Removed: redImage and yellowImage were loaded but never rendered (JSX commented out),
-    // wasting GPU texture memory and contributing to board corruption on Android.
+    // Note: Do NOT use Skia's `useImage()` for large background images here!
+    // We render them via standard React Native `<Image>` views behind the canvas.
+    // Calling `useImage` would load identical mega-textures into Skia's C++ GPU memory,
+    // double-allocating VRAM and eventually causing the OS to kill the rendering context ("TV Static" crash).
 
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
     const canvasWidth = propWidth ?? (windowWidth * 0.95);
