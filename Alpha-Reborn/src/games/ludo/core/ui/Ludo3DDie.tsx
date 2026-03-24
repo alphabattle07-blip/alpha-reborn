@@ -7,7 +7,6 @@ import {
     vec,
     Circle,
     Group,
-    Shadow,
 } from '@shopify/react-native-skia';
 import { ViewStyle, View } from 'react-native';
 import {
@@ -26,6 +25,7 @@ interface Ludo3DDieProps {
     size?: number;
     isUsed?: boolean;
     isRolling?: boolean; // Indefinite spin mode (waiting for server result)
+    isShown?: boolean;   // Whether the die is actively visible in the UI
     style?: ViewStyle;
 }
 
@@ -44,10 +44,10 @@ const PipSpot = ({ spot, internalValue, pipRadius, pipColor }: {
 
     return (
         <Group opacity={pipOpacity}>
-            <Circle cx={spot.cx} cy={spot.cy} r={pipRadius} color={pipColor}>
-                <Shadow dx={0} dy={1} blur={0.5} color="rgba(255,255,255,0.5)" />
-                <Shadow dx={0} dy={-0.5} blur={1} color="black" inner />
-            </Circle>
+            {/* Fake Inner Shadow Bevel */}
+            <Circle cx={spot.cx} cy={spot.cy - 0.5} r={pipRadius} color="rgba(0,0,0,0.8)" />
+            {/* Pip Body */}
+            <Circle cx={spot.cx} cy={spot.cy} r={pipRadius * 0.9} color={pipColor} />
         </Group>
     );
 };
@@ -57,6 +57,7 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
     size = 40,
     isUsed = false,
     isRolling = false,
+    isShown = true,
     style,
 }) => {
     // Measurements
@@ -96,6 +97,21 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
     }, []);
 
     useEffect(() => {
+        // --- KILL SWITCH: If the die is hidden, destroy all animations & timers ---
+        if (!isShown) {
+            cancelAnimation(bounce);
+            cancelAnimation(rotation);
+            cancelAnimation(scale);
+            bounce.value = 0;
+            rotation.value = 0;
+            scale.value = 1;
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+                timeoutRef.current = null;
+            }
+            return;
+        }
+
         // --- INDEFINITE ROLLING MODE ---
         if (isRolling && value <= 0) {
             // Continuously looping bounce
@@ -126,7 +142,9 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
                 let next;
                 do { next = Math.floor(Math.random() * 6) + 1; } while (next === internalValue.value);
                 internalValue.value = next;
-                timeoutRef.current = setTimeout(rollFace, 80 + Math.random() * 40);
+                
+                // Throttled: Face switches every 150-250ms (reduced CPU load from 80-120ms)
+                timeoutRef.current = setTimeout(rollFace, 150 + Math.random() * 100);
             };
             rollFace();
 
@@ -207,7 +225,7 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
         return () => {
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
         };
-    }, [value, size, isUsed, isRolling]);
+    }, [value, size, isUsed, isRolling, isShown]);
 
     // Derived transform for the Skia Group
     const transform = useDerivedValue(() => {
@@ -244,17 +262,15 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
     return (
         <View style={[{ width: size, height: size }, style]}>
             <Canvas style={{ flex: 1 }}>
-                {/* Static Shadow (stays on ground) */}
+                {/* Static Fake Geometric Shadow (stays on ground) */}
                 <RoundedRect
-                    x={2}
-                    y={3}
-                    width={size - 4}
-                    height={size - 4}
+                    x={0}
+                    y={5}
+                    width={size - 2}
+                    height={size - 2}
                     r={r}
-                    color="rgba(0,0,0,0.2)"
-                >
-                    <Shadow dx={0} dy={2} blur={4} color="rgba(0,0,0,0.3)" />
-                </RoundedRect>
+                    color="rgba(0,0,0,0.35)"
+                />
 
                 {/* Animated Die Body */}
                 <Group transform={transform} origin={{ x: size / 2, y: size / 2 }}>
@@ -264,9 +280,6 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
                             end={vec(size, size)}
                             colors={[startColor, endColor]}
                         />
-                        {/* Inner Bevel Highlight */}
-                        <Shadow dx={-1} dy={-1} blur={2} color="white" inner />
-                        <Shadow dx={2} dy={2} blur={3} color="rgba(0,0,0,0.2)" inner />
                     </RoundedRect>
 
                     {/* Pips rendered statically, opacity controlled via SharedValue */}

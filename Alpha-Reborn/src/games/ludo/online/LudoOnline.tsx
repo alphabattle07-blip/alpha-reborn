@@ -202,6 +202,15 @@ const LudoOnline = () => {
             // 1.1 Trigger recovery for initial state/timer sync
             socketService.recoverLudoGame(currentGame.id);
 
+            // 1.2 Global Disconnect Handler (Prevent Stuck UI on Doze drop)
+            const unsubscribeDisconnect = socketService.onDisconnect(() => {
+                console.warn('[LudoOnline] Connection lost! Unlocking UI for safety...');
+                animationLockRef.current = false;
+                setPendingSeedIndices([]);
+                setIsRolling(false);
+                setIsOpponentRolling(false);
+            });
+
             // 2. Listen for game state updates
             const unsubscribe = socketService.onGameStateUpdate((newState: any) => {
                 // Ignore updates once game is completed
@@ -470,6 +479,7 @@ const LudoOnline = () => {
                 unsubscribeTurn();
                 unsubscribeActionUpdate();
                 unsubscribeConnect();
+                unsubscribeDisconnect();
                 unsubscribeEnded();
                 unsubscribeChatHistory();
                 unsubscribeChatMessage();
@@ -619,6 +629,7 @@ const LudoOnline = () => {
         // CRITICAL: Block if socket is disconnected — don't start spinning with no server
         if (!socketService.isConnected()) {
             console.warn(`[LudoSync] Roll blocked: Socket disconnected. Waiting for reconnect.`);
+            socketService.connect();
             return;
         }
 
@@ -642,6 +653,12 @@ const LudoOnline = () => {
     const handleMove = (move: any) => {
         if (!currentGame || !userProfile || !visualGameState || animationLockRef.current) {
             if (animationLockRef.current) console.log("[LudoSync] Move blocked: Animation Lock active");
+            return;
+        }
+
+        if (!socketService.isConnected()) {
+            console.warn('[LudoSync] Cannot emit move - reconnecting first');
+            socketService.connect();
             return;
         }
 

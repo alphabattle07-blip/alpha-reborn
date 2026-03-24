@@ -116,13 +116,26 @@ const DiceHouse = ({
                         
                         // We always render the components to prevent Canvas unmount leaks,
                         // but hide them if they aren't supposed to be visible.
+                        // CRITICAL: NEVER use `display: 'none'` on Android for Skia Canvases!
+                        // It functionally rips the SurfaceView out of the native hierarchy, destroying
+                        // the GL Context and causing the exact "TV Static" crash we want to avoid.
+                        // We use `opacity: 0` instead to keep the EGL context perfectly alive.
                         return (
-                            <View key={`die-wrap-${i}`} style={{ display: showDie ? 'flex' : 'none' }}>
+                            <View 
+                                key={`die-wrap-${i}`} 
+                                style={{ 
+                                    opacity: showDie ? 1 : 0, 
+                                    // When hidden, take it out of layout flow so it doesn't push the visible die
+                                    position: showDie ? 'relative' : 'absolute',
+                                    pointerEvents: showDie ? 'auto' : 'none'
+                                }}
+                            >
                                 <Ludo3DDie
                                     value={isRolling ? 0 : d}
                                     size={35}
                                     isRolling={isRolling}
                                     isUsed={!isRolling && used}
+                                    isShown={showDie}
                                 />
                             </View>
                         );
@@ -269,7 +282,9 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     // Cleanup on unmount
     useEffect(() => {
         return () => {
-            if (turnTransitionTimerRef.current) clearTimeout(turnTransitionTimerRef.current);
+            if (turnTransitionTimerRef.current) {
+                clearTimeout(turnTransitionTimerRef.current);
+            }
         };
     }, []);
 

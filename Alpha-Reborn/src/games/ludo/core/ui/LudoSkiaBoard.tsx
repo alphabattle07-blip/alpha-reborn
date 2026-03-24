@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useWindowDimensions, View, Image, StyleSheet } from 'react-native';
-import { Canvas, Circle, Group, Paint, Shadow } from '@shopify/react-native-skia';
+import { Canvas, Circle, Group, Paint } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
     useSharedValue,
@@ -143,10 +143,6 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
     const shadowOpacity = useSharedValue(0);
     const prevPosRef = useRef(currentPos);
 
-    const liftedShadowColor = useDerivedValue(() => {
-        return `rgba(0,0,0,${shadowOpacity.value})`;
-    });
-
     // ===========================================
     // UNIFIED PATH INTERPOLATOR STATE
     // ===========================================
@@ -155,6 +151,7 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
     const pathY = useSharedValue<number[]>([target.y]);
 
     const renderedX = useDerivedValue(() => {
+        'worklet';
         const prog = pathProgress.value;
         const xs = pathX.value;
         const len = xs.length;
@@ -165,9 +162,10 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
         const localProg = exactStep - stepIndex;
         
         return xs[stepIndex] + (xs[stepIndex + 1] - xs[stepIndex]) * localProg;
-    });
+    }, [pathProgress, pathX, cx]);
 
     const renderedY = useDerivedValue(() => {
+        'worklet';
         const prog = pathProgress.value;
         const ys = pathY.value;
         const len = ys.length;
@@ -178,9 +176,10 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
         const localProg = exactStep - stepIndex;
         
         return ys[stepIndex] + (ys[stepIndex + 1] - ys[stepIndex]) * localProg;
-    });
+    }, [pathProgress, pathY, cy]);
 
     const renderedRadius = useDerivedValue(() => {
+        'worklet';
         const prog = pathProgress.value;
         const len = pathX.value.length;
         if (len <= 1 || prog >= 1) return scale.value * radius;
@@ -191,12 +190,13 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
         const hopScale = 1 + Math.sin(localProg * Math.PI) * 0.25; 
         
         return (scale.value === 1 ? hopScale : scale.value) * radius;
-    });
+    }, [pathProgress, pathX, scale, radius]);
 
     // ===========================================
     // CRITICAL: Unmount Cleanup Loop
     // ===========================================
-    // Memory unmount loop safely terminates GPU animations when game exits
+    // Runs on the JS thread — do NOT add 'worklet' here.
+    // cancelAnimation() and .value assignments are safe from JS thread.
     useEffect(() => {
         return () => {
             cancelAnimation(pulse);
@@ -205,8 +205,14 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
             cancelAnimation(scale);
             cancelAnimation(pathProgress);
             cancelAnimation(shadowOpacity);
+
+            // Force everything to safe values so GC can collect
+            pulse.value = 0;
+            scale.value = 1;
+            pathProgress.value = 1;
+            shadowOpacity.value = 0;
         };
-    }, []);
+    }, [id]);
 
     // Lift & Pulse "Pending Server Confirm" Animation
     useEffect(() => {
@@ -347,22 +353,27 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
             pathProgress.value = withTiming(1, { duration: moveDuration, easing: Easing.out(Easing.quad) });
         }
 
+        // Kill lingering repeating animations instantly
+        cancelAnimation(pulse);
+        cancelAnimation(scale);
+        pulse.value = 0;
+        scale.value = 1;
+        shadowOpacity.value = withTiming(0, { duration: 100 });
+
     }, [currentPos, landingPos, animationDelay, boardX, boardY, boardSize, stackIndex, stackSize]);
 
-    // Active indicator animation values
-    const indicatorOpacity = useDerivedValue(() => pulse.value);
-    const pulseRadius = useDerivedValue(() => radius * (1.2 + pulse.value * 0.5));
-    const pulseOpacity = useDerivedValue(() => (1 - pulse.value) * 0.5);
+    // Active indicator animation values — these run on the UI thread
+    const indicatorOpacity = useDerivedValue(() => { 'worklet'; return pulse.value; }, [pulse]);
+    const pulseRadius = useDerivedValue(() => { 'worklet'; return radius * (1.2 + pulse.value * 0.5); }, [pulse, radius]);
+    const pulseOpacity = useDerivedValue(() => { 'worklet'; return (1 - pulse.value) * 0.5; }, [pulse]);
+
+    // Derived values for the Fake Geometry Shadow
+    // Replaces expensive Gaussian Blur `<Shadow>` which crashes Samsung mobile GPUs over time
+    const fakeShadowY = useDerivedValue(() => { 'worklet'; return renderedY.value + 4 + (shadowOpacity.value * 12); }, [renderedY, shadowOpacity]);
+    const fakeShadowOpacity = useDerivedValue(() => { 'worklet'; return 0.35 + (shadowOpacity.value * 0.15); }, [shadowOpacity]);
 
     return (
         <Group>
-            {/* Selected Indicator removed to make movement feel direct */}
-            {false && isSelected && (
-                <Circle cx={renderedX} cy={renderedY} r={radius * 1.6} color="rgba(255, 255, 255, 0.8)">
-                    <Shadow dx={0} dy={0} blur={5} color="white" />
-                </Circle>
-            )}
-
             {/* Active Move Indicator (Pulsing ring) */}
             {isActive && !isSelected && (
                 <Group opacity={indicatorOpacity}>
@@ -375,11 +386,18 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
                 </Group>
             )}
 
+            {/* Fake Vector Shadow (Zero GPU Gaussian Blur Cost) */}
+            <Circle 
+                cx={renderedX} 
+                cy={fakeShadowY} 
+                r={useDerivedValue(() => renderedRadius.value * (1 + shadowOpacity.value * 0.1), [renderedRadius, shadowOpacity])} 
+                color="black" 
+                opacity={fakeShadowOpacity} 
+            />
+
             {/* Seed Body */}
             <Circle cx={renderedX} cy={renderedY} r={renderedRadius} color={color}>
-                <Paint style="stroke" strokeWidth={1.5} color="white" />
-                <Shadow dx={1} dy={2} blur={3} color="rgba(0,0,0,0.5)" />
-                <Shadow dx={0} dy={10} blur={4} color={liftedShadowColor} />
+                <Paint style="stroke" strokeWidth={2} color="rgba(255, 255, 255, 0.9)" />
             </Circle>
         </Group>
     );
@@ -482,9 +500,9 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
     const canvasWidth = propWidth ?? (windowWidth * 0.95);
     const canvasHeight = propHeight ?? (canvasWidth * 1.2); // Increase height to give more room top/bottom
 
-    // Render Throttle (GPU Safety Guard): Limit Skia re-renders to max 30 FPS (33ms)
+    // Render Throttle (GPU Safety Guard): Limit Skia re-renders to max 15 FPS (66ms)
     // Ensures massive state update loops (e.g. from dice) cannot overwhelm WebGL texture memory
-    const throttledPositions = useThrottledValue(positions, 33);
+    const throttledPositions = useThrottledValue(positions, 66);
 
     // CRITICAL MEMORY FIX: Pre-compile SVG string to avoid C++ leaky allocations on every render
     const shieldSkPath = useMemo(() => {
@@ -649,49 +667,53 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
                     resizeMode="contain"
                 />
 
+                {/* The Skia Canvas rendering the board SVG lines, shields, and seeds
+                    NOTE: Using plain Canvas here. All Gaussian blurs (<Shadow>) have been removed
+                    to ensure zero VRAM exhaustion on Samsung Exynos / mobile GPUs.
+                */}
                 <Canvas style={{ position: 'absolute', top: 0, left: 0, width: canvasWidth, height: canvasHeight }}>
 
-                {/* Shield Icons for lower levels */}
-                {(level === undefined || level < 3) && LudoBoardData.shieldPositions.map((pos, idx) => (
-                    <Group
-                        key={`shield-${idx}`}
-                        transform={[
-                            { translateX: boardX + pos.x * boardSize + SHIELD_OFFSET_X },
-                            { translateY: boardY + pos.y * boardSize + SHIELD_OFFSET_Y }
-                        ]}
-                    >
-                        {/* Nested group for scaling around the center (-12, -12 for a 24x24 path) */}
-                        <Group transform={[{ scale: (boardSize / 15 / 24) * SHIELD_USER_SCALE }]}>
-                            {shieldSkPath && (
-                                <Path
-                                    path={shieldSkPath}
-                                    color="rgba(255, 255, 255, 0.6)"
-                                    transform={[{ translateX: -12 }, { translateY: -12 }]}
-                                >
-                                    <Paint style="stroke" strokeWidth={2} color="rgba(0,0,0,0.3)" />
-                                </Path>
-                            )}
+                    {/* Shield Icons for lower levels */}
+                    {(level === undefined || level < 3) && LudoBoardData.shieldPositions.map((pos, idx) => (
+                        <Group
+                            key={`shield-${idx}`}
+                            transform={[
+                                { translateX: boardX + pos.x * boardSize + SHIELD_OFFSET_X },
+                                { translateY: boardY + pos.y * boardSize + SHIELD_OFFSET_Y }
+                            ]}
+                        >
+                            {/* Nested group for scaling around the center (-12, -12 for a 24x24 path) */}
+                            <Group transform={[{ scale: (boardSize / 15 / 24) * SHIELD_USER_SCALE }]}>
+                                {shieldSkPath && (
+                                    <Path
+                                        path={shieldSkPath}
+                                        color="rgba(255, 255, 255, 0.6)"
+                                        transform={[{ translateX: -12 }, { translateY: -12 }]}
+                                    >
+                                        <Paint style="stroke" strokeWidth={2} color="rgba(0,0,0,0.3)" />
+                                    </Path>
+                                )}
+                            </Group>
                         </Group>
-                    </Group>
-                ))}
+                    ))}
 
-                {seedsData.map(s => (
-                    <AnimatedSeed
-                        key={s.id}
-                        {...s}
-                        isSelected={s.playerId === (localPlayerId || 'p1') && s.seedSubIndex === selectedSeedIndex}
-                        boardX={boardX}
-                        boardY={boardY}
-                        boardSize={boardSize}
-                        radius={seedRadius}
-                        colorName={s.colorName}
-                        canvasWidth={canvasWidth}
-                        canvasHeight={canvasHeight}
-                        stackIndex={s.stackIndex}
-                        stackSize={s.stackSize}
-                    />
-                ))}
-            </Canvas>
+                    {seedsData.map(s => (
+                        <AnimatedSeed
+                            key={s.id}
+                            {...s}
+                            isSelected={s.playerId === (localPlayerId || 'p1') && s.seedSubIndex === selectedSeedIndex}
+                            boardX={boardX}
+                            boardY={boardY}
+                            boardSize={boardSize}
+                            radius={seedRadius}
+                            colorName={s.colorName}
+                            canvasWidth={canvasWidth}
+                            canvasHeight={canvasHeight}
+                            stackIndex={s.stackIndex}
+                            stackSize={s.stackSize}
+                        />
+                    ))}
+                </Canvas>
             </View>
         </GestureDetector>
     );
@@ -726,6 +748,16 @@ export const LudoSkiaBoard = React.memo(LudoSkiaBoardComponent, (prevProps, next
             }
         }
     }
+
+    // Critical check: Did pending seeds change? (ensures instant hover/lift effects)
+    if (prevProps.pendingSeedIndices !== nextProps.pendingSeedIndices) {
+        const prevPending = prevProps.pendingSeedIndices || [];
+        const nextPending = nextProps.pendingSeedIndices || [];
+        if (prevPending.length !== nextPending.length) return false;
+        if (!prevPending.every((val, index) => val === nextPending[index])) return false;
+    }
+
+    if (prevProps.localPlayerId !== nextProps.localPlayerId) return false;
 
     return true; // All structural data identical, skip re-render!
 });

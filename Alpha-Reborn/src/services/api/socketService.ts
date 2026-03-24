@@ -16,14 +16,20 @@ class SocketService {
 
         console.log('[SocketService] Connecting to:', API_BASE_URL);
         this.socket = io(API_BASE_URL, {
-            transports: ['polling', 'websocket'],
+            transports: ['websocket', 'polling'], // Prefer websocket for less polling overhead
             upgrade: true,
             reconnection: true,
-            reconnectionAttempts: Infinity,
+            reconnectionAttempts: 15, // Try hard to reconnect
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
             timeout: 20000,
+            autoConnect: true,
+            forceNew: false,
         });
+
+        // Optional debug logs for Doze-mode ping tracking
+        this.socket.on('ping', () => console.log('[SocketService] Ping sent'));
+        this.socket.on('pong', (ms) => console.log('[SocketService] Pong received in', ms, 'ms'));
 
         this.setupBaseListeners();
     }
@@ -65,8 +71,12 @@ class SocketService {
             }
         });
 
-        this.socket.on('disconnect', () => {
-            console.log('[SocketService] Disconnected');
+        this.socket.on('disconnect', (reason) => {
+            console.log('[SocketService] Disconnected:', reason);
+            if (reason === 'io server disconnect' || reason === 'ping timeout' || reason === 'transport close') {
+                console.log('[SocketService] Transport lost. Forcing immediate reconnect attempt...');
+                this.socket?.connect(); 
+            }
             this.emitLocal('disconnect');
         });
 
@@ -257,7 +267,8 @@ class SocketService {
 
     emitMove(gameId: string, move: any) {
         if (!this.socket?.connected) {
-            console.warn('[SocketService] Cannot emit move, socket disconnected');
+            console.warn('[SocketService] Cannot emit move, socket disconnected. Reconnecting...');
+            this.connect();
             return;
         }
 
@@ -271,25 +282,35 @@ class SocketService {
             backendMove.type = 'DRAW';
         }
 
-        console.log('[SocketService] Emitting gameAction:', backendMove.type, 'for game:', gameId);
-        this.socket.emit('gameAction', {
-            gameId,
-            gameType: 'whot',
-            data: backendMove
-        });
+        try {
+            console.log('[SocketService] Emitting gameAction:', backendMove.type, 'for game:', gameId);
+            this.socket.emit('gameAction', {
+                gameId,
+                gameType: 'whot',
+                data: backendMove
+            });
+        } catch (e: any) {
+            console.error('[SocketService] EmitMove failed:', e.message || e);
+            // Don't crash the app if socket layer throws
+        }
     }
 
     emitAction(gameId: string, gameType: string, data: any) {
         if (!this.socket?.connected) {
-            console.warn(`[SocketService] Cannot emit action for ${gameType}, socket disconnected`);
+            console.warn(`[SocketService] Cannot emit action for ${gameType}, socket disconnected. Reconnecting...`);
+            this.connect();
             return;
         }
-        console.log(`[SocketService] Emitting gameAction: ${data?.type} for game: ${gameId}`);
-        this.socket.emit('gameAction', {
-            gameId,
-            gameType,
-            data
-        });
+        try {
+            console.log(`[SocketService] Emitting gameAction: ${data?.type} for game: ${gameId}`);
+            this.socket.emit('gameAction', {
+                gameId,
+                gameType,
+                data
+            });
+        } catch (e: any) {
+            console.error('[SocketService] EmitAction failed:', e.message || e);
+        }
     }
 
     disconnect() {
