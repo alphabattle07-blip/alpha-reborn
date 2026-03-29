@@ -83,6 +83,9 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // ===========================================
+    // Add this ref for aggressive cleanup
+    const surfaceRef = useRef<any>(null);
+
     // CRITICAL: Unmount Cleanup Loop
     // ===========================================
     // Reanimated leaks `withRepeat` and `withTiming` worklets if the component
@@ -90,9 +93,22 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
     // causes the dice to be permanently displaced (-Y) in the NEXT match.
     useEffect(() => {
         return () => {
+            // Aggressive cleanup when die is hidden or unmounted
             cancelAnimation(bounce);
             cancelAnimation(rotation);
             cancelAnimation(scale);
+            
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+                timeoutRef.current = null;
+            }
+            
+            // Try to release Skia surface
+            if (surfaceRef.current?.tearDown) {
+                try {
+                    surfaceRef.current.tearDown();
+                } catch (e) {}
+            }
         };
     }, []);
 
@@ -143,8 +159,8 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
                 do { next = Math.floor(Math.random() * 6) + 1; } while (next === internalValue.value);
                 internalValue.value = next;
                 
-                // Throttled: Face switches every 150-250ms (reduced CPU load from 80-120ms)
-                timeoutRef.current = setTimeout(rollFace, 150 + Math.random() * 100);
+                // Throttled: Face switches every 120-180ms
+                timeoutRef.current = setTimeout(rollFace, 120 + Math.random() * 60);
             };
             rollFace();
 
@@ -261,7 +277,7 @@ export const Ludo3DDie: React.FC<Ludo3DDieProps> = ({
 
     return (
         <View style={[{ width: size, height: size }, style]}>
-            <Canvas style={{ flex: 1 }}>
+            <Canvas ref={surfaceRef} style={{ flex: 1 }}>
                 {/* Static Fake Geometric Shadow (stays on ground) */}
                 <RoundedRect
                     x={0}

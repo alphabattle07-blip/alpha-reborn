@@ -81,7 +81,7 @@ class SocketService {
         });
 
         this.socket.on('connect_error', (err) => {
-            console.error('[SocketService] Connection error:', err.message);
+            console.warn('[SocketService] Connection error:', err.message);
         });
 
         // ─── UNIFIED GAME EVENT BRIDGE ───────────────────────────────────────────
@@ -290,7 +290,7 @@ class SocketService {
                 data: backendMove
             });
         } catch (e: any) {
-            console.error('[SocketService] EmitMove failed:', e.message || e);
+            console.warn('[SocketService] EmitMove failed:', e.message || e);
             // Don't crash the app if socket layer throws
         }
     }
@@ -309,7 +309,7 @@ class SocketService {
                 data
             });
         } catch (e: any) {
-            console.error('[SocketService] EmitAction failed:', e.message || e);
+            console.warn('[SocketService] EmitAction failed:', e.message || e);
         }
     }
 

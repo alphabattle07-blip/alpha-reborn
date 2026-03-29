@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useWindowDimensions, View, Image, StyleSheet } from 'react-native';
-import { Canvas, Circle, Group, Paint } from '@shopify/react-native-skia';
+import { Canvas, Circle, Group, Paint, RoundedRect } from '@shopify/react-native-skia';
+import { Ludo3DDieGroup } from './Ludo3DDieGroup';
+import { DiceAnimState } from './useDiceAnimations';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
     useSharedValue,
@@ -146,51 +148,95 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
     // ===========================================
     // UNIFIED PATH INTERPOLATOR STATE
     // ===========================================
+    const flatPathCoords = useMemo(() => {
+        // Pre-calculate unstacked raw path coordinates from -1 to 58
+        const coords = new Float32Array(120);
+        for(let i = -1; i <= 58; i++) {
+            const pt = getTargetPixels(i, false); 
+            coords[(i + 1) * 2] = pt.x;
+            coords[(i + 1) * 2 + 1] = pt.y;
+        }
+        return coords;
+    }, [colorName, boardX, boardY, boardSize, canvasWidth, canvasHeight]); // DO NOT include stackIndex/stackSize!
+
+    const dynamicPath = useSharedValue(flatPathCoords);
+    useEffect(() => { dynamicPath.value = flatPathCoords; }, [flatPathCoords]);
+
+    const moveStartPos = useSharedValue<number>(-1);
+    const moveEndPos = useSharedValue<number>(-1);
+    const moveDirectly = useSharedValue<boolean>(false);
+    const moveOriginX = useSharedValue<number>(target.x);
+    const moveOriginY = useSharedValue<number>(target.y);
     const pathProgress = useSharedValue<number>(1); // 1 = arrived
-    const pathX = useSharedValue<number[]>([target.x]);
-    const pathY = useSharedValue<number[]>([target.y]);
 
     const renderedX = useDerivedValue(() => {
         'worklet';
         const prog = pathProgress.value;
-        const xs = pathX.value;
-        const len = xs.length;
-        if (len <= 1 || prog >= 1) return cx.value;
+        if (prog >= 1) return cx.value;
 
-        const exactStep = prog * (len - 1);
-        const stepIndex = Math.min(Math.floor(exactStep), len - 2);
-        const localProg = exactStep - stepIndex;
-        
-        return xs[stepIndex] + (xs[stepIndex + 1] - xs[stepIndex]) * localProg;
-    }, [pathProgress, pathX, cx]);
+        const start = moveStartPos.value;
+        const end = moveEndPos.value;
+        const isDirect = moveDirectly.value;
+        const originX = moveOriginX.value;
+
+        if (isDirect || end <= start) {
+            const endX = dynamicPath.value[(end + 1) * 2];
+            return originX + (endX - originX) * prog;
+        }
+
+        const stepsCount = end - start;
+        const exactStep = prog * stepsCount;
+        const currentOffset = Math.floor(exactStep);
+        const fraction = exactStep - currentOffset;
+
+        let x1 = (currentOffset === 0) ? originX : dynamicPath.value[(start + currentOffset + 1) * 2];
+        let x2 = dynamicPath.value[(Math.min(end, start + currentOffset + 1) + 1) * 2];
+
+        return x1 + (x2 - x1) * fraction;
+    });
 
     const renderedY = useDerivedValue(() => {
         'worklet';
         const prog = pathProgress.value;
-        const ys = pathY.value;
-        const len = ys.length;
-        if (len <= 1 || prog >= 1) return cy.value; 
+        if (prog >= 1) return cy.value;
 
-        const exactStep = prog * (len - 1);
-        const stepIndex = Math.min(Math.floor(exactStep), len - 2);
-        const localProg = exactStep - stepIndex;
-        
-        return ys[stepIndex] + (ys[stepIndex + 1] - ys[stepIndex]) * localProg;
-    }, [pathProgress, pathY, cy]);
+        const start = moveStartPos.value;
+        const end = moveEndPos.value;
+        const isDirect = moveDirectly.value;
+        const originY = moveOriginY.value;
+
+        if (isDirect || end <= start) {
+            const endY = dynamicPath.value[(end + 1) * 2 + 1];
+            return originY + (endY - originY) * prog;
+        }
+
+        const stepsCount = end - start;
+        const exactStep = prog * stepsCount;
+        const currentOffset = Math.floor(exactStep);
+        const fraction = exactStep - currentOffset;
+
+        let y1 = (currentOffset === 0) ? originY : dynamicPath.value[(start + currentOffset + 1) * 2 + 1];
+        let y2 = dynamicPath.value[(Math.min(end, start + currentOffset + 1) + 1) * 2 + 1];
+
+        return y1 + (y2 - y1) * fraction;
+    });
 
     const renderedRadius = useDerivedValue(() => {
         'worklet';
         const prog = pathProgress.value;
-        const len = pathX.value.length;
-        if (len <= 1 || prog >= 1) return scale.value * radius;
+        if (prog >= 1) return scale.value * radius;
 
-        const exactStep = prog * (len - 1);
-        const localProg = exactStep % 1; // 0 to 1 for the current tile
-        // Math sine wave for pure bouncing: 0 -> 1 -> 0
-        const hopScale = 1 + Math.sin(localProg * Math.PI) * 0.25; 
+        const start = moveStartPos.value;
+        const end = moveEndPos.value;
+        const isDirect = moveDirectly.value;
+
+        const stepsCount = (isDirect || end <= start) ? 1 : (end - start);
+        const exactStep = prog * stepsCount;
+        const localProg = exactStep % 1; 
         
+        const hopScale = 1 + Math.sin(localProg * Math.PI) * 0.25; 
         return (scale.value === 1 ? hopScale : scale.value) * radius;
-    }, [pathProgress, pathX, scale, radius]);
+    });
 
     // ===========================================
     // CRITICAL: Unmount Cleanup Loop
@@ -301,37 +347,26 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
 
         // ====================================================================
         // UNIFIED PATH INTERPOLATOR
-        // Reduces 24+ withSequence arrays to EXACTLY 1 withTiming object per move.
-        // Drops C++ memory allocation so Skia can survive deep auto-play matches.
+        // Drops JS Bridge Array allocation so Skia survives deep matches.
         // ====================================================================
+        moveOriginX.value = cx.value;
+        moveOriginY.value = cy.value;
 
-        const steps = [];
         const diff = landingPos - oldPos;
-        if (diff > 0 && diff <= 12) {
-            for (let i = oldPos + 1; i <= landingPos; i++) steps.push(i);
-        } else {
-            steps.push(landingPos);
-        }
+        const isDirect = !(diff > 0 && diff <= 12);
+        moveDirectly.value = isDirect;
+        moveStartPos.value = oldPos;
+        moveEndPos.value = landingPos;
 
         playLudoSound('seedMove');
 
-        const xs = steps.map((i, idx) => getTargetPixels(i, idx === steps.length - 1 && landingPos === newPos).x);
-        const ys = steps.map((i, idx) => getTargetPixels(i, idx === steps.length - 1 && landingPos === newPos).y);
-
-        // Prepend current pos so array represents Start -> A -> B -> End
-        const currentTargetPixels = getTargetPixels(oldPos, oldPos === newPos && oldPos >= 56);
-        xs.unshift(currentTargetPixels.x);
-        ys.unshift(currentTargetPixels.y);
-
-        pathX.value = xs;
-        pathY.value = ys;
-        
-        // Base targets become the landing destination of the linear walk
-        cx.value = xs[xs.length - 1];
-        cy.value = ys[ys.length - 1];
+        const targetLanding = getTargetPixels(landingPos, landingPos === newPos);
+        cx.value = targetLanding.x;
+        cy.value = targetLanding.y;
         scale.value = 1;
 
-        const moveDuration = steps.length * TILE_ANIMATION_DURATION;
+        const stepsCount = isDirect ? 1 : diff;
+        const moveDuration = stepsCount * TILE_ANIMATION_DURATION;
 
         if (landingPos !== newPos) {
             // CAPTURE JUMP: Walk 0->1, then jump to the captured target
@@ -419,7 +454,7 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
 
 // Render Throttle Hook (GPU Safety Guard)
 // Limits how often a rapidly changing value can trigger a re-render
-function useThrottledValue<T>(value: T, limitMs: number): T {
+export function useThrottledValue<T>(value: T, limitMs: number): T {
     const [throttledValue, setThrottledValue] = useState(value);
     const lastRan = useRef(Date.now());
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -479,26 +514,46 @@ const getSeedPixelPosition = (seedPos: number, playerId: string, seedSubIndex: n
     return base;
 };
 
+// Dice overlay props for rendering dice inside the board Canvas
+interface DiceOverlayProps {
+    anim: DiceAnimState;
+    activeColor: 'blue' | 'green';
+    show0: boolean;
+    show1: boolean;
+    isRolling: boolean;
+    diceUsed: boolean[];
+}
+
+// Dice house position constants (must match DiceHouseMaster touch targets)
+const DICE_POS = {
+    blue:  { x: 0.385, y: 0.800 },
+    green: { x: 0.600, y: 0.270 },
+} as const;
+const HOUSE_W = 90;
+const HOUSE_H = 60;
+const DIE_PADDING_X = 7.5;
+const DIE_PADDING_Y = 12;
+const DIE_SIZE = 35;
+const DIE_GAP = 5;
+
 type LudoSkiaBoardProps = {
     onBoardPress: (x: number, y: number, seed?: { playerId: string; seedIndex: number; position: number } | null) => void;
     positions: { [key: string]: { pos: number, land: number, delay: number, isActive: boolean }[] };
     level?: number;
-    width?: number; // Optional custom width
-    height?: number; // Optional custom height
+    width?: number;
+    height?: number;
     selectedSeedIndex?: number | null;
     pendingSeedIndices?: number[];
     localPlayerId?: string;
+    diceOverlay?: DiceOverlayProps;
 };
 
-const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWidth, height: propHeight, selectedSeedIndex, pendingSeedIndices: propPendingSeedIndices, localPlayerId }: LudoSkiaBoardProps) => {
-    // Note: Do NOT use Skia's `useImage()` for large background images here!
-    // We render them via standard React Native `<Image>` views behind the canvas.
-    // Calling `useImage` would load identical mega-textures into Skia's C++ GPU memory,
-    // double-allocating VRAM and eventually causing the OS to kill the rendering context ("TV Static" crash).
-
+const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWidth, height: propHeight, selectedSeedIndex, pendingSeedIndices: propPendingSeedIndices, localPlayerId, diceOverlay }: LudoSkiaBoardProps) => {
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
     const canvasWidth = propWidth ?? (windowWidth * 0.95);
-    const canvasHeight = propHeight ?? (canvasWidth * 1.2); // Increase height to give more room top/bottom
+    // Extend canvas to full screen height so dice house fits inside the same Canvas.
+    // This is the key to having ONE GPU surface for everything.
+    const canvasHeight = propHeight ?? windowHeight;
 
     // Render Throttle (GPU Safety Guard): Limit Skia re-renders to max 15 FPS (66ms)
     // Ensures massive state update loops (e.g. from dice) cannot overwhelm WebGL texture memory
@@ -588,8 +643,6 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
     // Hit-test function to find which seed was tapped
     const findTappedSeed = (tapX: number, tapY: number) => {
         // Increase hit radius for better mobile responsiveness
-        // seedRadius is typically (boardSize / 15) * 0.35
-        // We want a hit target of at least 44-48 points total diameter
         const hitRadius = Math.max(seedRadius * 2.8, 22);
 
         for (const seed of seedsData) {
@@ -632,7 +685,9 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
             }
         >
             <View style={{ width: canvasWidth, height: canvasHeight }}>
-                {/* Hardware Accelerated React Native Images (Prevents GPU Texture Memory Limits "TV Static") */}
+                {/* Hardware Accelerated React Native Images placed OUTSIDE Skia 
+                    (Prevents the OS from forcing Skia to redraw massive 1024x1024 static buffers, 
+                    curing the TV Static Exynos leak at 370+ moves) */}
                 <Image
                     source={boardImageSource}
                     style={{
@@ -667,10 +722,7 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
                     resizeMode="contain"
                 />
 
-                {/* The Skia Canvas rendering the board SVG lines, shields, and seeds
-                    NOTE: Using plain Canvas here. All Gaussian blurs (<Shadow>) have been removed
-                    to ensure zero VRAM exhaustion on Samsung Exynos / mobile GPUs.
-                */}
+                {/* The Skia Canvas rendering ONLY vectors, seeds, and dice (Zero Bitmap Texture Exhaustion!) */}
                 <Canvas style={{ position: 'absolute', top: 0, left: 0, width: canvasWidth, height: canvasHeight }}>
 
                     {/* Shield Icons for lower levels */}
@@ -713,6 +765,67 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
                             stackSize={s.stackSize}
                         />
                     ))}
+
+                    {/* ── Dice House Overlay (rendered in THIS Canvas — no second surface!) ── */}
+                    {diceOverlay && (() => {
+                        const dPos = DICE_POS[diceOverlay.activeColor];
+                        // Convert screen-relative dice position to canvas-local coordinates
+                        const canvasOffsetX = (windowWidth - canvasWidth) / 2;
+                        const canvasOffsetY = (windowHeight - canvasHeight) / 2;
+                        const houseLeftLocal = dPos.x * windowWidth - HOUSE_W / 2 - canvasOffsetX;
+                        const houseTopLocal  = dPos.y * windowHeight - HOUSE_H / 2 - canvasOffsetY;
+                        const d0X = houseLeftLocal + DIE_PADDING_X;
+                        const d1X = houseLeftLocal + DIE_PADDING_X + DIE_SIZE + DIE_GAP;
+                        const dY  = houseTopLocal + DIE_PADDING_Y;
+
+                        return (
+                            <Group>
+                                {/* House background */}
+                                <RoundedRect
+                                    x={houseLeftLocal} y={houseTopLocal}
+                                    width={HOUSE_W} height={HOUSE_H}
+                                    r={15}
+                                    color="rgba(255,255,255,0.10)"
+                                />
+                                <RoundedRect
+                                    x={houseLeftLocal + 0.5} y={houseTopLocal + 0.5}
+                                    width={HOUSE_W - 1} height={HOUSE_H - 1}
+                                    r={14.5}
+                                    color="transparent"
+                                    style="stroke"
+                                    strokeWidth={1}
+                                />
+                                {/* Die 0 */}
+                                <Group 
+                                    opacity={diceOverlay.show0 ? 1 : 0} 
+                                    transform={[{ translateX: d0X }, { translateY: dY }]}
+                                >
+                                    <Ludo3DDieGroup
+                                        value={diceOverlay.anim.face0}
+                                        size={DIE_SIZE}
+                                        bounce={diceOverlay.anim.bounce}
+                                        rotation={diceOverlay.anim.rotation}
+                                        scale={diceOverlay.anim.scale}
+                                        isUsed={!diceOverlay.isRolling && (diceOverlay.diceUsed[0] ?? false)}
+                                    />
+                                </Group>
+                                {/* Die 1 */}
+                                <Group 
+                                    opacity={diceOverlay.show1 ? 1 : 0} 
+                                    transform={[{ translateX: d1X }, { translateY: dY }]}
+                                >
+                                    <Ludo3DDieGroup
+                                        value={diceOverlay.anim.face1}
+                                        size={DIE_SIZE}
+                                        bounce={diceOverlay.anim.bounce}
+                                        rotation={diceOverlay.anim.rotation}
+                                        scale={diceOverlay.anim.scale}
+                                        isUsed={!diceOverlay.isRolling && (diceOverlay.diceUsed[1] ?? false)}
+                                    />
+                                </Group>
+                            </Group>
+                        );
+                    })()}
                 </Canvas>
             </View>
         </GestureDetector>
@@ -758,6 +871,20 @@ export const LudoSkiaBoard = React.memo(LudoSkiaBoardComponent, (prevProps, next
     }
 
     if (prevProps.localPlayerId !== nextProps.localPlayerId) return false;
+
+    // Check diceOverlay
+    const pb = prevProps.diceOverlay;
+    const nb = nextProps.diceOverlay;
+    if (pb && !nb) return false;
+    if (!pb && nb) return false;
+    if (pb && nb) {
+        if (pb.activeColor !== nb.activeColor) return false;
+        if (pb.show0 !== nb.show0) return false;
+        if (pb.show1 !== nb.show1) return false;
+        if (pb.isRolling !== nb.isRolling) return false;
+        if (pb.diceUsed[0] !== nb.diceUsed[0]) return false;
+        if (pb.diceUsed[1] !== nb.diceUsed[1]) return false;
+    }
 
     return true; // All structural data identical, skip re-render!
 });

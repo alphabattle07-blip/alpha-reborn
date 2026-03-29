@@ -486,6 +486,10 @@ const LudoOnline = () => {
                 socketService.leaveGame(currentGame.id);
                 socketService.leaveMatchChat(currentGame.id);
                 dispatch(clearChat());
+                
+                // Force kill all Skia surfaces on unmount
+                setIsRolling(false);
+                setIsOpponentRolling(false);
             };
         }
     }, [currentGame?.id, userProfile?.id]);

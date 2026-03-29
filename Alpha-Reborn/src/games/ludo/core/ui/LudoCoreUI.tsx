@@ -14,40 +14,20 @@ import {
 } from "./LudoGameLogic";
 import { getRankFromRating } from '../../../../utils/rank';
 import { getComputerMove } from "../../computer/LudoComputerLogic";
-import { Ludo3DDie } from "./Ludo3DDie";
-import { LudoTimerRing } from "./LudoTimerRing";
+import { DiceHouseMaster } from "./DiceHouseMaster";
+import { useDiceAnimations } from './useDiceAnimations';
+import { LudoTimerRing } from './LudoTimerRing';
 import { useLudoSoundEffects } from "../useLudoSoundEffects";
 import QuickMuteButton from '../../../../components/QuickMuteButton';
 
+
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#222" },
-    boardContainer: { flex: 1, justifyContent: "center", alignItems: 'center' },
-
-    // Dice House Styles
-    diceHouse: {
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        padding: 4,
-        borderRadius: 15,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
-        width: 90,
-        height: 60,
-        alignItems: 'center',
-        justifyContent: 'center'
-    },
-    diceRow: { flexDirection: 'row', gap: 5 },
-    diceOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: '#000',
-        borderRadius: 15,
-        justifyContent: 'center',
+    boardContainer: { 
+        flex: 1, 
+        justifyContent: "center", 
         alignItems: 'center',
     },
-    rankIconOverlay: {
-        fontSize: 28,
-    },
-
-    // Profile Arrangement
     opponentUIContainer: {
         position: 'absolute',
         top: 40,
@@ -70,102 +50,6 @@ const styles = StyleSheet.create({
         elevation: 100,
     }
 });
-
-const DiceHouse = ({
-    dice,
-    diceUsed,
-    onPress,
-    waitingForRoll,
-    rankIcon,
-    disabled,
-    isRolling,
-    timerProps
-}: {
-    dice: number[],
-    diceUsed: boolean[],
-    onPress: () => void,
-    waitingForRoll: boolean,
-    rankIcon: string,
-    disabled?: boolean,
-    isRolling?: boolean,
-    timerProps?: {
-        isActive: boolean;
-        turnStartTime?: number;
-        turnDuration?: number;
-        yellowAt?: number;
-        redAt?: number;
-        serverTimeOffset?: number;
-    }
-}) => {
-    // Determine dice count for rolling placeholder (1 die for level < 3, 2 for >= 3)
-    const rollingDiceCount = dice?.length > 0 ? dice.length : 1;
-
-    return (
-        <View style={{ width: 94, height: 64, alignItems: 'center', justifyContent: 'center' }}>
-            <TouchableOpacity
-                style={styles.diceHouse}
-                onPress={onPress}
-                disabled={disabled || !waitingForRoll || isRolling}
-                activeOpacity={0.8}
-            >
-                <View style={styles.diceRow}>
-                    {Array.from({ length: 2 }).map((_, i) => {
-                        const showDie = (isRolling && i < rollingDiceCount) || (!isRolling && dice && dice.length > i);
-                        const d = dice?.[i] || 0;
-                        const used = diceUsed?.[i] || false;
-                        
-                        // We always render the components to prevent Canvas unmount leaks,
-                        // but hide them if they aren't supposed to be visible.
-                        // CRITICAL: NEVER use `display: 'none'` on Android for Skia Canvases!
-                        // It functionally rips the SurfaceView out of the native hierarchy, destroying
-                        // the GL Context and causing the exact "TV Static" crash we want to avoid.
-                        // We use `opacity: 0` instead to keep the EGL context perfectly alive.
-                        return (
-                            <View 
-                                key={`die-wrap-${i}`} 
-                                style={{ 
-                                    opacity: showDie ? 1 : 0, 
-                                    // When hidden, take it out of layout flow so it doesn't push the visible die
-                                    position: showDie ? 'relative' : 'absolute',
-                                    pointerEvents: showDie ? 'auto' : 'none'
-                                }}
-                            >
-                                <Ludo3DDie
-                                    value={isRolling ? 0 : d}
-                                    size={35}
-                                    isRolling={isRolling}
-                                    isUsed={!isRolling && used}
-                                    isShown={showDie}
-                                />
-                            </View>
-                        );
-                    })}
-                </View>
-
-                {waitingForRoll && !isRolling && (
-                    <View style={styles.diceOverlay}>
-                        <Text style={styles.rankIconOverlay}>{rankIcon}</Text>
-                    </View>
-                )}
-            </TouchableOpacity>
-
-            {/* SVG Timer Border — overlaid exactly around the DiceHouse */}
-            {timerProps?.isActive && (
-                <LudoTimerRing
-                    isActive={timerProps.isActive}
-                    turnStartTime={timerProps.turnStartTime}
-                    turnDuration={timerProps.turnDuration}
-                    redAt={timerProps.redAt}
-                    serverTimeOffset={timerProps.serverTimeOffset}
-                    width={94}
-                    height={64}
-                    borderRadius={17}
-                    strokeWidth={3}
-                />
-            )}
-        </View>
-    );
-};
 
 type LudoGameProps = {
     gameState?: LudoGameState;
@@ -190,11 +74,7 @@ type LudoGameProps = {
     localPlayerId?: string;
 };
 
-// --- Dice Positioning Configuration ---
-const DICE_POS_CONFIG = {
-    blue: { x: 0.385, y: 0.800 },   // Final Position: 0.800
-    green: { x: 0.600, y: 0.270 },  // Final Position: 0.270
-};
+
 
 export const LudoCoreUI: React.FC<LudoGameProps> = ({
     gameState: propGameState,
@@ -531,21 +411,17 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     }, [gameState, onMove, frozenDice]);
 
 
-    const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-
-    const getDicePositionStyle = (playerColor: 'blue' | 'green') => {
-        const checkPos = DICE_POS_CONFIG[playerColor];
-        const pos = checkPos || { x: 0.5, y: 0.5 };
-        return {
-            position: 'absolute' as const,
-            left: pos.x * windowWidth - 47, // Centering 94px width
-            top: pos.y * windowHeight - 32, // Centering 64px height
-        };
-    };
-
     // Determine active color for persistent dice house
     const activePlayerColor = gameState.currentPlayerIndex === 0 ? 'blue' : 'green';
-    const diceHouseStyle = getDicePositionStyle(activePlayerColor);
+
+    // ── Setup Dice Animations for the Single-Canvas Board ────────────────────────
+    const currentDice = frozenDice !== null ? frozenDice.dice : gameState.dice;
+    const currentDiceUsed = frozenDice !== null ? frozenDice.diceUsed : gameState.diceUsed;
+    const currentIsRolling = (gameState.currentPlayerIndex === 0 ? isRolling : !!isOpponentRolling) && frozenDice === null;
+    const currentDiceCount = (frozenDice !== null ? frozenDice.dice : gameState.dice)?.length || 1;
+    const currentActiveColor = frozenDice !== null ? (frozenDice.playerIndex === 0 ? 'blue' : 'green') : activePlayerColor;
+
+    const diceAnimState = useDiceAnimations(currentDice, currentDiceCount, currentIsRolling);
 
     return (
         <View style={styles.container}>
@@ -561,8 +437,8 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                 />
             </View>
 
-            {/* Game Board */}
-            <View style={styles.boardContainer}>
+            {/* Game Board (now also renders the dice visuals natively!) */}
+            <View style={styles.boardContainer} renderToHardwareTextureAndroid={false}>
                 <LudoSkiaBoard
                     onBoardPress={handleBoardPress}
                     positions={boardPositions}
@@ -570,6 +446,16 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                     selectedSeedIndex={selectedSeedIndex}
                     pendingSeedIndices={pendingSeedIndices}
                     localPlayerId={localPlayerId}
+                    diceOverlay={
+                        (gameState.winner) ? undefined : {
+                            anim: diceAnimState,
+                            activeColor: currentActiveColor,
+                            show0: currentIsRolling || (currentDice.length > 0),
+                            show1: currentDiceCount > 1 && (currentIsRolling || currentDice.length > 1),
+                            isRolling: currentIsRolling,
+                            diceUsed: currentDiceUsed,
+                        }
+                    }
                 />
             </View>
 
@@ -585,34 +471,24 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                 />
             </View>
 
-            {/* Persistent Dice House - Moves instead of remounting */}
-            {/* During turn transition, keep the dice house frozen at the current player's position */}
-            {!gameState.winner && (
-                <View style={frozenDice !== null
-                    ? getDicePositionStyle(frozenDice.playerIndex === 0 ? 'blue' : 'green')
-                    : diceHouseStyle
-                }>
-                    <DiceHouse
-                        dice={frozenDice !== null ? frozenDice.dice : gameState.dice}
-                        diceUsed={frozenDice !== null ? frozenDice.diceUsed : gameState.diceUsed}
-                        waitingForRoll={frozenDice !== null ? false : gameState.waitingForRoll}
-                        onPress={handleRollDice}
-                        rankIcon={frozenDice !== null
-                            ? (frozenDice.playerIndex === 0 ? playerRank.icon : opponentRank.icon)
-                            : (gameState.currentPlayerIndex === 0 ? playerRank.icon : opponentRank.icon)
-                        }
-                        disabled={frozenDice !== null || gameState.currentPlayerIndex !== 0}
-                        isRolling={
-                            (gameState.currentPlayerIndex === 0 ? isRolling : !!isOpponentRolling)
-                            && frozenDice === null
-                        }
-                        timerProps={frozenDice !== null ? undefined : (timerSync ? {
-                            isActive: true,
-                            ...timerSync
-                        } : undefined)}
-                    />
-                </View>
-            )}
+            {/* ── Dice House Touch Target (No Canvas, just buttons & timers) ── */}
+            <DiceHouseMaster
+                waitingForRoll={frozenDice !== null ? false : gameState.waitingForRoll}
+                onPress={handleRollDice}
+                rankIcon={
+                    frozenDice !== null
+                        ? (frozenDice.playerIndex === 0 ? playerRank.icon : opponentRank.icon)
+                        : (gameState.currentPlayerIndex === 0 ? playerRank.icon : opponentRank.icon)
+                }
+                disabled={frozenDice !== null || gameState.currentPlayerIndex !== 0}
+                isRolling={currentIsRolling}
+                activeColor={currentActiveColor}
+                timerProps={frozenDice !== null ? undefined : (timerSync ? {
+                    isActive: true,
+                    ...timerSync
+                } : undefined)}
+                isShown={!gameState.winner}
+            />
 
             <View style={styles.soundControlContainer} pointerEvents="box-none">
                 <QuickMuteButton gameId="ludo" />
