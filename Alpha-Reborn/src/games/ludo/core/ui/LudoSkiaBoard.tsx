@@ -1,14 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useWindowDimensions, View, Image, StyleSheet } from 'react-native';
 import { Canvas, Circle, Group, Paint, RoundedRect } from '@shopify/react-native-skia';
-import { Ludo3DDieGroup } from './Ludo3DDieGroup';
-import { DiceAnimState } from './useDiceAnimations';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
     useSharedValue,
     useDerivedValue,
     withTiming,
-    withRepeat,
     withSequence,
     withDelay,
     Easing,
@@ -261,44 +258,34 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
     }, [id]);
 
     // Lift & Pulse "Pending Server Confirm" Animation
+    // GPU FIX: No withRepeat — use one-shot lift instead of continuous breathing
     useEffect(() => {
         if (isPending) {
-            // Lift instantly
             shadowOpacity.value = withTiming(0.4, { duration: 150 });
-            // Breathing effect
-            scale.value = withRepeat(
-                withSequence(
-                    withTiming(1.2, { duration: 300, easing: Easing.inOut(Easing.ease) }),
-                    withTiming(1.05, { duration: 600, easing: Easing.inOut(Easing.ease) })
-                ),
-                -1,
-                true
-            );
+            // Static lift (no breathing loop = no continuous Canvas redraws)
+            scale.value = withTiming(1.15, { duration: 200, easing: Easing.out(Easing.quad) });
         } else {
             shadowOpacity.value = withTiming(0, { duration: 150 });
-            // If the piece is NOT about to move, smooth scale back down
             if (currentPos === prevPosRef.current && currentPos === landingPos) {
                 cancelAnimation(scale);
                 scale.value = withTiming(1, { duration: 200 });
             } else {
-                // IMMEDIATE SNAP: Fixes the bug where the seed wouldn't bounce during motion
-                // because scale was stuck at 1.15 from the breathing animation.
                 cancelAnimation(scale);
                 scale.value = 1;
             }
         }
     }, [isPending, currentPos, landingPos]);
 
+    // GPU FIX: Do NOT use withRepeat here!
+    // withRepeat forces the Skia Canvas to redraw at 60fps CONTINUOUSLY
+    // for every active seed. On Samsung Exynos (Mali GPU), this overwhelms
+    // the full-screen EGL surface → updateAndRelease() crash → TV static.
+    // Instead, use a one-shot animation to a fixed value (static glow ring).
     useEffect(() => {
         if (isActive) {
-            pulse.value = withRepeat(
-                withTiming(1, { duration: 800, easing: Easing.inOut(Easing.quad) }),
-                -1,
-                true
-            );
+            pulse.value = withTiming(0.7, { duration: 300, easing: Easing.out(Easing.quad) });
         } else {
-            // Cancel pulse INSTANTLY when not active
-            pulse.value = withTiming(0, { duration: 0 });
+            pulse.value = withTiming(0, { duration: 150 });
         }
     }, [isActive]);
 
@@ -397,10 +384,10 @@ const AnimatedSeed = React.memo(({ id, playerId, seedSubIndex, currentPos, landi
 
     }, [currentPos, landingPos, animationDelay, boardX, boardY, boardSize, stackIndex, stackSize]);
 
-    // Active indicator animation values — these run on the UI thread
+    // Active indicator — STATIC values (no continuous animation = no forced Canvas redraws)
     const indicatorOpacity = useDerivedValue(() => { 'worklet'; return pulse.value; }, [pulse]);
-    const pulseRadius = useDerivedValue(() => { 'worklet'; return radius * (1.2 + pulse.value * 0.5); }, [pulse, radius]);
-    const pulseOpacity = useDerivedValue(() => { 'worklet'; return (1 - pulse.value) * 0.5; }, [pulse]);
+    const pulseRadius = useDerivedValue(() => { 'worklet'; return radius * 1.5; }, [radius]);
+    const pulseOpacity = useDerivedValue(() => { 'worklet'; return pulse.value * 0.4; }, [pulse]);
 
     // Derived values for the Fake Geometry Shadow
     // Replaces expensive Gaussian Blur `<Shadow>` which crashes Samsung mobile GPUs over time
@@ -514,28 +501,6 @@ const getSeedPixelPosition = (seedPos: number, playerId: string, seedSubIndex: n
     return base;
 };
 
-// Dice overlay props for rendering dice inside the board Canvas
-interface DiceOverlayProps {
-    anim: DiceAnimState;
-    activeColor: 'blue' | 'green';
-    show0: boolean;
-    show1: boolean;
-    isRolling: boolean;
-    diceUsed: boolean[];
-}
-
-// Dice house position constants (must match DiceHouseMaster touch targets)
-const DICE_POS = {
-    blue:  { x: 0.385, y: 0.800 },
-    green: { x: 0.600, y: 0.270 },
-} as const;
-const HOUSE_W = 90;
-const HOUSE_H = 60;
-const DIE_PADDING_X = 7.5;
-const DIE_PADDING_Y = 12;
-const DIE_SIZE = 35;
-const DIE_GAP = 5;
-
 type LudoSkiaBoardProps = {
     onBoardPress: (x: number, y: number, seed?: { playerId: string; seedIndex: number; position: number } | null) => void;
     positions: { [key: string]: { pos: number, land: number, delay: number, isActive: boolean }[] };
@@ -545,14 +510,13 @@ type LudoSkiaBoardProps = {
     selectedSeedIndex?: number | null;
     pendingSeedIndices?: number[];
     localPlayerId?: string;
-    diceOverlay?: DiceOverlayProps;
 };
 
-const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWidth, height: propHeight, selectedSeedIndex, pendingSeedIndices: propPendingSeedIndices, localPlayerId, diceOverlay }: LudoSkiaBoardProps) => {
+const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWidth, height: propHeight, selectedSeedIndex, pendingSeedIndices: propPendingSeedIndices, localPlayerId }: LudoSkiaBoardProps) => {
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
     const canvasWidth = propWidth ?? (windowWidth * 0.95);
-    // Extend canvas to full screen height so dice house fits inside the same Canvas.
-    // This is the key to having ONE GPU surface for everything.
+    // Canvas no longer needs to cover full screen — dice are rendered as RN Animated views.
+    // Reduced height saves ~30% GPU texture memory on Samsung Exynos (Mali).
     const canvasHeight = propHeight ?? windowHeight;
 
     // Render Throttle (GPU Safety Guard): Limit Skia re-renders to max 15 FPS (66ms)
@@ -766,66 +730,6 @@ const LudoSkiaBoardComponent = ({ onBoardPress, positions, level, width: propWid
                         />
                     ))}
 
-                    {/* ── Dice House Overlay (rendered in THIS Canvas — no second surface!) ── */}
-                    {diceOverlay && (() => {
-                        const dPos = DICE_POS[diceOverlay.activeColor];
-                        // Convert screen-relative dice position to canvas-local coordinates
-                        const canvasOffsetX = (windowWidth - canvasWidth) / 2;
-                        const canvasOffsetY = (windowHeight - canvasHeight) / 2;
-                        const houseLeftLocal = dPos.x * windowWidth - HOUSE_W / 2 - canvasOffsetX;
-                        const houseTopLocal  = dPos.y * windowHeight - HOUSE_H / 2 - canvasOffsetY;
-                        const d0X = houseLeftLocal + DIE_PADDING_X;
-                        const d1X = houseLeftLocal + DIE_PADDING_X + DIE_SIZE + DIE_GAP;
-                        const dY  = houseTopLocal + DIE_PADDING_Y;
-
-                        return (
-                            <Group>
-                                {/* House background */}
-                                <RoundedRect
-                                    x={houseLeftLocal} y={houseTopLocal}
-                                    width={HOUSE_W} height={HOUSE_H}
-                                    r={15}
-                                    color="rgba(255,255,255,0.10)"
-                                />
-                                <RoundedRect
-                                    x={houseLeftLocal + 0.5} y={houseTopLocal + 0.5}
-                                    width={HOUSE_W - 1} height={HOUSE_H - 1}
-                                    r={14.5}
-                                    color="transparent"
-                                    style="stroke"
-                                    strokeWidth={1}
-                                />
-                                {/* Die 0 */}
-                                <Group 
-                                    opacity={diceOverlay.show0 ? 1 : 0} 
-                                    transform={[{ translateX: d0X }, { translateY: dY }]}
-                                >
-                                    <Ludo3DDieGroup
-                                        value={diceOverlay.anim.face0}
-                                        size={DIE_SIZE}
-                                        bounce={diceOverlay.anim.bounce}
-                                        rotation={diceOverlay.anim.rotation}
-                                        scale={diceOverlay.anim.scale}
-                                        isUsed={!diceOverlay.isRolling && (diceOverlay.diceUsed[0] ?? false)}
-                                    />
-                                </Group>
-                                {/* Die 1 */}
-                                <Group 
-                                    opacity={diceOverlay.show1 ? 1 : 0} 
-                                    transform={[{ translateX: d1X }, { translateY: dY }]}
-                                >
-                                    <Ludo3DDieGroup
-                                        value={diceOverlay.anim.face1}
-                                        size={DIE_SIZE}
-                                        bounce={diceOverlay.anim.bounce}
-                                        rotation={diceOverlay.anim.rotation}
-                                        scale={diceOverlay.anim.scale}
-                                        isUsed={!diceOverlay.isRolling && (diceOverlay.diceUsed[1] ?? false)}
-                                    />
-                                </Group>
-                            </Group>
-                        );
-                    })()}
                 </Canvas>
             </View>
         </GestureDetector>
@@ -870,21 +774,8 @@ export const LudoSkiaBoard = React.memo(LudoSkiaBoardComponent, (prevProps, next
         if (!prevPending.every((val, index) => val === nextPending[index])) return false;
     }
 
-    if (prevProps.localPlayerId !== nextProps.localPlayerId) return false;
 
-    // Check diceOverlay
-    const pb = prevProps.diceOverlay;
-    const nb = nextProps.diceOverlay;
-    if (pb && !nb) return false;
-    if (!pb && nb) return false;
-    if (pb && nb) {
-        if (pb.activeColor !== nb.activeColor) return false;
-        if (pb.show0 !== nb.show0) return false;
-        if (pb.show1 !== nb.show1) return false;
-        if (pb.isRolling !== nb.isRolling) return false;
-        if (pb.diceUsed[0] !== nb.diceUsed[0]) return false;
-        if (pb.diceUsed[1] !== nb.diceUsed[1]) return false;
-    }
+    if (prevProps.localPlayerId !== nextProps.localPlayerId) return false;
 
     return true; // All structural data identical, skip re-render!
 });

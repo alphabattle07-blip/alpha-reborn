@@ -211,16 +211,44 @@ const LudoOnline = () => {
                 setIsOpponentRolling(false);
             });
 
-            // 2. Listen for game state updates
+            // 2. Listen for game state updates (reconnect / timeout recovery)
             const unsubscribe = socketService.onGameStateUpdate((newState: any) => {
                 // Ignore updates once game is completed
                 if (gameOverProcessedRef.current) return;
-                
-                // Update local store board only — avoids stale metadata overwriting status/players
+
+                // --- STALE STATE GUARD ---
+                // Prevents recovery snapshots from regressing the board backward.
+                // After reconnection, the server may send a recovery state with
+                // stateVersion=0 (because the recovery path doesn't track versions).
+                // If our local board already has a high stateVersion, we must NOT
+                // overwrite it with the stale recovery data.
                 if (currentGameRef.current) {
+                    const currentBoard = typeof currentGameRef.current.board === 'string'
+                        ? JSON.parse(currentGameRef.current.board)
+                        : currentGameRef.current.board;
+
+                    const incomingVersion = newState.stateVersion || 0;
+                    const currentVersion = currentBoard?.stateVersion || 0;
+
+                    // Guard 1: If client has a known version and incoming is LOWER (including 0)
+                    if (currentVersion > 0 && incomingVersion < currentVersion) {
+                        console.log(`[LudoSync] Dropping stale full-state update: incoming v${incomingVersion} < current v${currentVersion}`);
+                        return;
+                    }
+
+                    // Guard 2: If versions are equal, only apply if it has timer info
+                    // (same version = duplicate, not a new state change)
+                    if (currentVersion > 0 && incomingVersion === currentVersion && !newState.remainingTime) {
+                        console.log(`[LudoSync] Dropping duplicate full-state update: v${incomingVersion}`);
+                        return;
+                    }
+
+                    // Ensure board is stored as an object (never a string)
+                    const boardObj = typeof newState === 'string' ? JSON.parse(newState) : newState;
+
                     dispatch(setCurrentGame({
                         ...currentGameRef.current,
-                        board: newState
+                        board: boardObj
                     }));
                 }
 
@@ -407,7 +435,7 @@ const LudoOnline = () => {
 
             // 3.6 Reconnection Recovery: Full sync when socket reconnects
             const unsubscribeConnect = socketService.onConnect(() => {
-                console.log("[LudoSync] Socket RECONNECTED - Waiting 800ms to stabilize before recovery");
+                console.log("[LudoSync] Socket RECONNECTED - Waiting 1500ms to stabilize before recovery");
 
                 // CRITICAL FIX: Debounce recovery — a mobile socket can fire 'connect' 3x in 2s.
                 // Without this guard, we reset the watermark 3 times and accept 3 stale snapshots,
@@ -425,15 +453,14 @@ const LudoOnline = () => {
                     diceStateRef.current = 'IDLE';
                     animationLockRef.current = false;
 
-                    // CRITICAL FIX: Only reset the eventId watermark AFTER the socket has stabilized.
-                    // Resetting it immediately on every 'connect' means stale recovery responses
-                    // from previous reconnect attempts are not dropped.
-                    lastEventIdRef.current = 0;
+                    // DO NOT reset lastEventIdRef — the watermark must persist across
+                    // reconnects to prevent stale events from replaying and causing
+                    // the TV static / reconnect loop issue.
 
                     socketService.recoverLudoGame(currentGame.id);
                     // Also fetch full state via polling as a backup
                     dispatch(fetchGameState(currentGame.id));
-                }, 800); // Wait 800ms — if socket drops again, we cancel and restart the timer
+                }, 1500); // Wait 1500ms — gives Render/mobile network time to fully stabilize
             });
 
             // 4. Listen for game ended (forfeit, normal win)

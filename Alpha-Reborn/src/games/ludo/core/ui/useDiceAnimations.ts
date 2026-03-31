@@ -43,8 +43,16 @@ export function useDiceAnimations(
     }, [dice, isRolling]);
 
     // Rolling animation
+    // FIX: The face-switching setTimeout was firing every 120ms from the JS thread,
+    // causing cross-thread shared value writes that forced full Skia Canvas redraws.
+    // Combined with 3 concurrent withRepeat animations on a full-screen Canvas,
+    // this overwhelmed the Samsung Exynos GPU → updateAndRelease() crash.
+    const mountedRef = useRef(true);
+    useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+
     useEffect(() => {
         if (isRolling) {
+            // Stagger animation starts slightly to avoid simultaneous GPU surface lock contention
             bounce.value = withRepeat(
                 withSequence(
                     withTiming(-DIE_SIZE * 0.45, { duration: 380, easing: Easing.out(Easing.quad) }),
@@ -66,9 +74,13 @@ export function useDiceAnimations(
                 -1
             );
 
-            // Face switching loop
+            // Face switching loop — SLOWED DOWN from 120ms to 300ms
+            // Each write crosses JS→UI thread bridge and forces a Skia redraw.
+            // At 120ms that's ~8 redraws/sec ON TOP of withRepeat animations.
+            // At 300ms it's ~3/sec — still visually convincing but GPU-safe.
             if (faceTimeout.current) clearTimeout(faceTimeout.current);
             const switchFace = () => {
+                if (!mountedRef.current) return; // Guard: don't write to shared values after unmount
                 let next0: number, next1: number;
                 do { next0 = Math.floor(Math.random() * 6) + 1; } while (next0 === face0.value);
                 face0.value = next0;
@@ -76,12 +88,15 @@ export function useDiceAnimations(
                     do { next1 = Math.floor(Math.random() * 6) + 1; } while (next1 === face1.value);
                     face1.value = next1;
                 }
-                faceTimeout.current = setTimeout(switchFace, 120 + Math.random() * 60);
+                faceTimeout.current = setTimeout(switchFace, 300 + Math.random() * 100);
             };
-            switchFace();
+            // Delay the FIRST face switch by 100ms to let the withRepeat animations
+            // claim the GPU surface first (avoids simultaneous lock contention).
+            faceTimeout.current = setTimeout(switchFace, 100);
 
             return () => {
                 if (faceTimeout.current) clearTimeout(faceTimeout.current);
+                faceTimeout.current = null;
             };
         } else {
             cancelAnimation(bounce);

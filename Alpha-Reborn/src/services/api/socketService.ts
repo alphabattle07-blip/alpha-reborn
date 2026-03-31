@@ -16,13 +16,19 @@ class SocketService {
 
         console.log('[SocketService] Connecting to:', API_BASE_URL);
         this.socket = io(API_BASE_URL, {
-            transports: ['websocket', 'polling'], // Prefer websocket for less polling overhead
-            upgrade: true,
+            // 1. Force WebSocket only — skip polling upgrade, prevents mid-connection glitch
+            transports: ['websocket'],
+
+            // 2. Relaxed connection timeout — gives Render time to wake from cold-start
+            timeout: 45000,
+
+            // 3. Smart reconnection strategy
             reconnection: true,
-            reconnectionAttempts: 15, // Try hard to reconnect
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            timeout: 20000,
+            reconnectionAttempts: Infinity,  // Never stop trying
+            reconnectionDelay: 1000,         // Start fast
+            reconnectionDelayMax: 5000,      // Cap at 5s between attempts
+            randomizationFactor: 0.5,        // Add jitter to avoid thundering herd
+
             autoConnect: true,
             forceNew: false,
         });

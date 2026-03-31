@@ -16,6 +16,7 @@ import { getRankFromRating } from '../../../../utils/rank';
 import { getComputerMove } from "../../computer/LudoComputerLogic";
 import { DiceHouseMaster } from "./DiceHouseMaster";
 import { useDiceAnimations } from './useDiceAnimations';
+import { LudoDiceOverlay } from './LudoDiceOverlay';
 import { LudoTimerRing } from './LudoTimerRing';
 import { useLudoSoundEffects } from "../useLudoSoundEffects";
 import QuickMuteButton from '../../../../components/QuickMuteButton';
@@ -446,17 +447,21 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                     selectedSeedIndex={selectedSeedIndex}
                     pendingSeedIndices={pendingSeedIndices}
                     localPlayerId={localPlayerId}
-                    diceOverlay={
-                        (gameState.winner) ? undefined : {
-                            anim: diceAnimState,
-                            activeColor: currentActiveColor,
-                            show0: currentIsRolling || (currentDice.length > 0),
-                            show1: currentDiceCount > 1 && (currentIsRolling || currentDice.length > 1),
-                            isRolling: currentIsRolling,
-                            diceUsed: currentDiceUsed,
-                        }
-                    }
                 />
+
+                {/* Dice rendered as React Native Animated views — NOT inside Skia.
+                    This prevents dice animations from forcing 60fps redraws of the
+                    full-screen Skia Canvas, which crashed Samsung Exynos GPUs. */}
+                {!gameState.winner && (
+                    <LudoDiceOverlay
+                        anim={diceAnimState}
+                        activeColor={currentActiveColor}
+                        show0={currentIsRolling || (currentDice.length > 0)}
+                        show1={currentDiceCount > 1 && (currentIsRolling || currentDice.length > 1)}
+                        isRolling={currentIsRolling}
+                        diceUsed={currentDiceUsed}
+                    />
+                )}
             </View>
 
             {/* 2. Player Profile - Bottom-Left */}
