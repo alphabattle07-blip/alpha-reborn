@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigation } from "@react-navigation/native";
 import { useWindowDimensions, View, StyleSheet, Text, TouchableOpacity, Alert } from "react-native";
-import { LudoSkiaBoard } from "./LudoSkiaBoard";
+import { LudoNativeBoard } from "./LudoNativeBoard";
 import LudoPlayerProfile from "./LudoPlayerProfile";
 import {
     initializeGame,
@@ -440,7 +440,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
 
             {/* Game Board (now also renders the dice visuals natively!) */}
             <View style={styles.boardContainer} renderToHardwareTextureAndroid={false}>
-                <LudoSkiaBoard
+                <LudoNativeBoard
                     onBoardPress={handleBoardPress}
                     positions={boardPositions}
                     level={level || gameState.level}
