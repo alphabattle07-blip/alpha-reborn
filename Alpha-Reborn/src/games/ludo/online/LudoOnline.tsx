@@ -364,6 +364,27 @@ const LudoOnline = () => {
 
                 if (data.type === 'MOVE_PIECE' && data.move) {
                     try {
+                       // Predict Guard Layer
+                       const isMyMove = data.actionPlayerIndex === (isPlayer1 ? 0 : 1);
+                       const isRedundant = isMyMove && data.stateVersion <= localStateVersionRef.current;
+
+                       if (isRedundant) {
+                           console.log(`[LudoPredict] Server confirmed v${data.stateVersion}. Syncing authority.`);
+                           localStateVersionRef.current = data.stateVersion;
+                           animationLockRef.current = false;
+                           setPendingSeedIndices(prev => prev.filter(id => id !== data.move.seedIndex));
+                           
+                           // STABILIZE: Always ingest server's decision on turns and waiting status
+                           newBoard.waitingForRoll = data.waitingForRoll;
+                           newBoard.currentPlayerIndex = data.currentPlayerIndex;
+                           
+                           dispatch(setCurrentGame({
+                               ...latestGame,
+                               board: newBoard
+                           }));
+                           return; // SKIP REDUX APPLY_MOVE ENTIRELY
+                       }
+
                        newBoard = applyMove(newBoard, data.move);
                        // Server wins any disagreements
                        newBoard.waitingForRoll = data.waitingForRoll;
@@ -394,12 +415,8 @@ const LudoOnline = () => {
                        
                        shouldUpdate = true;
                        
-                       // Unlock animation after a delay (approx 300ms per step)
-                       const moveSteps = data.move.targetPos - data.move.sourcePos;
-                       const animTime = Math.max(500, Math.min(3000, Math.abs(moveSteps) * 300));
-                       setTimeout(() => {
-                           animationLockRef.current = false;
-                       }, animTime);
+                       // Unlock animation instantly now that server has synchronized
+                       animationLockRef.current = false;
 
                     } catch (e) {
                        console.error("[LudoOnline] Failed to apply opponent move locally", e);
@@ -495,6 +512,17 @@ const LudoOnline = () => {
             });
 
             // Instant game connection bypasses match countdown logic like Whot does
+            
+            const unsubscribeVersionMismatch = socketService.onLogicVersionMismatch(() => {
+                 Alert.alert(
+                     'Update Required', 
+                     'Your game logic is out of date. Please update the app to continue playing.', 
+                     [{ text: 'OK', onPress: () => {
+                         dispatch(clearCurrentGame());
+                         (navigation as any).navigate('GameLobby', { gameId: 'ludo' });
+                     } }]
+                 );
+            });
 
             return () => {
                 // Cancel any pending reconnect recovery to prevent state updates after unmount
@@ -510,6 +538,7 @@ const LudoOnline = () => {
                 unsubscribeEnded();
                 unsubscribeChatHistory();
                 unsubscribeChatMessage();
+                unsubscribeVersionMismatch();
                 socketService.leaveGame(currentGame.id);
                 socketService.leaveMatchChat(currentGame.id);
                 dispatch(clearChat());
@@ -611,33 +640,6 @@ const LudoOnline = () => {
             }
         }
 
-        // --- RUBBER-BANDING PROTECTION ---
-        // If we have a pending local state, check if we should prefer it over the server state
-        if (pendingStateRef.current) {
-            const now = Date.now();
-            const timeSinceAction = now - lastActionTimeRef.current;
-
-            // If it's been more than 10 seconds, drop the pending state (stale)
-            if (timeSinceAction > 10000) {
-                pendingStateRef.current = null;
-            } else {
-                // Check if the server has explicitly sent a new dice result (bonus roll)
-                const isServerEquivalent =
-                    (processedState.players[processedState.currentPlayerIndex]?.lastProcessedMoveId === pendingStateRef.current.pendingMoveId) ||
-                    (processedState.currentPlayerIndex !== pendingStateRef.current.currentPlayerIndex) ||
-                    (processedState.waitingForRoll !== pendingStateRef.current.waitingForRoll && processedState.dice.length === 0) ||
-                    (!processedState.waitingForRoll && processedState.dice.length > 0); 
-
-                if (isServerEquivalent || !pendingStateRef.current.pendingMoveId) {
-                    // Server matched our optimistic expectation! Clear pending state.
-                    pendingStateRef.current = null;
-                } else {
-                    // Server is still behind. Ignore server state and use our pending state.
-                    return pendingStateRef.current;
-                }
-            }
-        }
-
         return processedState;
     }, [currentGame, isPlayer2]);
 
@@ -673,7 +675,7 @@ const LudoOnline = () => {
             setIsRolling(true);
             diceStateRef.current = 'ROLLING';
             lastActionTimeRef.current = Date.now();
-            socketService.emitAction(currentGame.id, 'ludo', { type: 'ROLL_DICE' });
+            socketService.emitAction(currentGame.id, 'ludo', { type: 'ROLL_DICE', expectedStateVersion: visualGameState.stateVersion });
         } catch (error) {
             console.error("Failed to emit roll", error);
             setIsRolling(false);
@@ -724,7 +726,20 @@ const LudoOnline = () => {
         const moveWithId = { ...move, moveId: actionId };
 
         try {
-            socketService.emitAction(currentGame.id, 'ludo', { type: 'MOVE_PIECE', move: moveWithId, moveId: actionId });
+            // PREDICTION LAYER
+            // CRITICAL FIX: NEVER predict upon the SWAPPED visualGameState. Use pristine server string.
+            const rawCurrentBoard = typeof currentGameRef.current.board === 'string' ? JSON.parse(currentGameRef.current.board) : currentGameRef.current.board;
+            const predictedBoard = applyMove(rawCurrentBoard, moveWithId);
+            if (predictedBoard.stateVersion) localStateVersionRef.current = predictedBoard.stateVersion;
+            
+            if (currentGameRef.current) {
+                dispatch(setCurrentGame({
+                    ...currentGameRef.current,
+                    board: predictedBoard
+                }));
+            }
+
+            socketService.emitAction(currentGame.id, 'ludo', { type: 'MOVE_PIECE', move: moveWithId, moveId: actionId, expectedStateVersion: visualGameState.stateVersion });
             
             // Failsafe: If the server silently ignores the move (e.g., turn timeout race condition)
             // or the network drops the packet, we must unlock the UI eventually.
@@ -752,7 +767,7 @@ const LudoOnline = () => {
 
         lastActionTimeRef.current = Date.now();
         try {
-            socketService.emitAction(currentGame.id, 'ludo', { type: 'PASS_TURN' });
+            socketService.emitAction(currentGame.id, 'ludo', { type: 'PASS_TURN', expectedStateVersion: visualGameState.stateVersion });
         } catch (error) {
             console.error("Failed to emit pass turn", error);
         }

@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { API_BASE_URL } from '../../config/api';
+import { LOGIC_VERSION } from '../../games/ludo/core/ui/LudoGameLogic';
 
 class SocketService {
     private socket: Socket | null = null;
@@ -54,6 +55,9 @@ class SocketService {
             if (this.userId) {
                 console.log('[SocketService] Re-registering user:', this.userId);
                 this.socket?.emit('register', this.userId);
+                
+                // Enforce Logic version lock
+                this.socket?.emit('LOGIC_VERSION_CHECK', LOGIC_VERSION);
             }
 
             this.emitLocal('connect');
@@ -218,6 +222,15 @@ class SocketService {
             console.warn('[SocketService] Chat error:', data?.message);
             this.emitLocal('chat_error', data);
         });
+
+        this.socket.on('LOGIC_VERSION_MISMATCH', () => {
+            console.error('[SocketService] FATAL: Logic version mismatch with server!');
+            // Stop attempting to reconnect since the app must be forcefully updated
+            if (this.socket && this.socket.io) {
+                this.socket.io.reconnection(false);
+            }
+            this.emitLocal('LOGIC_VERSION_MISMATCH');
+        });
     }
 
     getSocket() {
@@ -354,6 +367,10 @@ class SocketService {
 
     onGameEnded(callback: (data: any) => void) {
         return this.on('gameEnded', callback);
+    }
+
+    onLogicVersionMismatch(callback: () => void) {
+        return this.on('LOGIC_VERSION_MISMATCH', callback);
     }
 
     // --- Match Ready Handshake ---

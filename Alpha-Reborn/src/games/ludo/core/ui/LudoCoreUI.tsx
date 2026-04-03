@@ -195,10 +195,10 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
             if (!p) return;
             const isOurTurn = pIdx === gameState.currentPlayerIndex;
             posMap[p.id] = (p.seeds || []).map((s, idx) => {
-                const seedCanMove = isOurTurn && currentValidMoves.some(m => m.seedIndex === idx);
+                const seedCanMove = isOurTurn && currentValidMoves.some((m: any) => m.seedIndex === idx);
                 return {
-                    pos: s.position,
-                    land: s.landingPos,
+                    pos: s.tileIndex,
+                    land: s.landingIndex,
                     delay: s.animationDelay || 0,
                     isActive: !!seedCanMove,
                     isCurrent: isOurTurn
@@ -214,8 +214,8 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
         }
     }, [gameState.winner, onGameOver]);
 
-    const p1Score = useMemo(() => gameState.players[0].seeds.filter(s => s.position === 56).length, [gameState.players[0].seeds]);
-    const p2Score = useMemo(() => gameState.players[1].seeds.filter(s => s.position === 56).length, [gameState.players[1].seeds]);
+    const p1Score = useMemo(() => gameState.players[0]?.seeds?.filter((s:any) => s.zone === 'FINISH' && s.tileIndex === 56).length || 0, [gameState.players[0]?.seeds]);
+    const p2Score = useMemo(() => gameState.players[1]?.seeds?.filter((s:any) => s.zone === 'FINISH' && s.tileIndex === 56).length || 0, [gameState.players[1]?.seeds]);
 
     const playerRank = useMemo(() => getRankFromRating(player.rating || 1200) || { icon: '🌱' }, [player.rating]);
     const opponentRank = useMemo(() => getRankFromRating(opponent.rating || 1500) || { icon: '🌱' }, [opponent.rating]);

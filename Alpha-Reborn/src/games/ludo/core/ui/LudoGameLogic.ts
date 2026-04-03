@@ -1,13 +1,28 @@
+export const LOGIC_VERSION = "v1.0.1";
+
 export type PlayerColor = 'red' | 'yellow' | 'green' | 'blue';
+export type LudoZone = 'HOME' | 'TRACK' | 'FINISH';
+
+export const START_OFFSETS: Record<PlayerColor, number> = {
+    red: 0,
+    green: 13,
+    yellow: 26,
+    blue: 39
+};
+
+export const SAFE_TILES = [0, 8, 13, 21, 26, 34, 39, 47];
+
+export const getAbsoluteIndex = (color: PlayerColor, tileIndex: number): number => {
+    return (START_OFFSETS[color] + tileIndex) % 52;
+};
 
 export interface LudoSeed {
     id: string;
-    position: number;
-    // -1 = House
-    // 0 - 55 = Active Path (Unique to the player color)
-    // 56 = Finished (Goal)
-    landingPos: number; // The tile index it lands on before any rules like "Capture" jump it to another spot
-    animationDelay: number; // Delay in ms before starting the movement animation
+    zone: LudoZone;
+    tileIndex: number;
+    landingZone: LudoZone;
+    landingIndex: number;
+    animationDelay: number;
 }
 
 export interface LudoPlayer {
@@ -16,6 +31,7 @@ export interface LudoPlayer {
     seeds: LudoSeed[];
     lastProcessedMoveId?: string;
     consecutiveNoSixes?: number;
+    timeouts?: number;
 }
 
 export interface LudoGameState {
@@ -25,28 +41,40 @@ export interface LudoGameState {
     diceUsed: boolean[];
     waitingForRoll: boolean;
     winner: string | null;
-    log?: string[]; // Optional: stripped from server payloads to reduce payload size
+    log?: string[]; 
     level: number;
     stateVersion?: number;
+    eventId?: number;
     pendingMoveId?: string;
 }
 
-const HOUSE_POS = -1;
-const FINISH_POS = 56;
-
-export const initializeGame = (p1Color: PlayerColor = 'red', p2Color: PlayerColor = 'yellow', level: number = 2): LudoGameState => {
+export const initializeGame = (p1Color: PlayerColor = 'red', p2Color: PlayerColor = 'yellow', level: number = 1): LudoGameState => {
     return {
         players: [
             {
                 id: 'p1',
                 color: p1Color,
-                seeds: Array.from({ length: 4 }).map((_, i) => ({ id: `${p1Color}-${i}`, position: HOUSE_POS, landingPos: HOUSE_POS, animationDelay: 0 })),
+                seeds: Array.from({ length: 4 }).map((_, i) => ({ 
+                    id: `${p1Color}-${i}`, 
+                    zone: 'HOME', 
+                    tileIndex: -1, 
+                    landingZone: 'HOME', 
+                    landingIndex: -1, 
+                    animationDelay: 0 
+                })),
                 consecutiveNoSixes: 0,
             },
             {
                 id: 'p2',
                 color: p2Color,
-                seeds: Array.from({ length: 4 }).map((_, i) => ({ id: `${p2Color}-${i}`, position: HOUSE_POS, landingPos: HOUSE_POS, animationDelay: 0 })),
+                seeds: Array.from({ length: 4 }).map((_, i) => ({ 
+                    id: `${p2Color}-${i}`, 
+                    zone: 'HOME', 
+                    tileIndex: -1, 
+                    landingZone: 'HOME', 
+                    landingIndex: -1, 
+                    animationDelay: 0 
+                })),
                 consecutiveNoSixes: 0,
             },
         ],
@@ -55,8 +83,9 @@ export const initializeGame = (p1Color: PlayerColor = 'red', p2Color: PlayerColo
         diceUsed: [],
         waitingForRoll: true,
         winner: null,
-        log: ['Game Started'],
         level: level,
+        stateVersion: 0,
+        eventId: 0
     };
 };
 
@@ -65,47 +94,32 @@ export const rollDice = (state: LudoGameState): LudoGameState => {
 
     const d1 = Math.floor(Math.random() * 6) + 1;
     const d2 = Math.floor(Math.random() * 6) + 1;
-
     let dice = state.level >= 3 ? [d1, d2] : [d1];
     const diceUsed = state.level >= 3 ? [false, false] : [false];
 
-    // --- Pity Timer (Mercy Rule) ---
     const newPlayers = JSON.parse(JSON.stringify(state.players));
     const player = newPlayers[state.currentPlayerIndex];
     let consecutiveNoSixes = player.consecutiveNoSixes || 0;
     
-    const activeCount = player.seeds.filter((s: LudoSeed) => s.position !== HOUSE_POS && s.position !== FINISH_POS).length;
+    const activeCount = player.seeds.filter((s: LudoSeed) => s.zone !== 'HOME' && !(s.zone === 'FINISH' && s.tileIndex === 56)).length;
 
     if (activeCount === 0) {
         if (!dice.includes(6)) {
             consecutiveNoSixes++;
-
-            // Progressive probability boost:
-            // Attempt 1: natural ~16.6% (no boost)
-            // Attempt 2: +10% extra chance
-            // Attempt 3: +20% extra chance
-            // Attempt 4: +40% extra chance
-            // Attempt 5: guaranteed 6
             let forceSix = false;
-            if (consecutiveNoSixes >= 5) {
-                forceSix = true;
-            } else if (consecutiveNoSixes === 4 && Math.random() < 0.40) {
-                forceSix = true;
-            } else if (consecutiveNoSixes === 3 && Math.random() < 0.20) {
-                forceSix = true;
-            } else if (consecutiveNoSixes === 2 && Math.random() < 0.10) {
-                forceSix = true;
-            }
+            if (consecutiveNoSixes >= 5) forceSix = true;
+            else if (consecutiveNoSixes === 4 && Math.random() < 0.40) forceSix = true;
+            else if (consecutiveNoSixes === 3 && Math.random() < 0.20) forceSix = true;
+            else if (consecutiveNoSixes === 2 && Math.random() < 0.10) forceSix = true;
 
             if (forceSix) {
                 dice[0] = 6;
                 consecutiveNoSixes = 0;
             }
         } else {
-            consecutiveNoSixes = 0; // Naturally rolled a 6
+            consecutiveNoSixes = 0; 
         }
     } else {
-        // Player has active pieces, timer remains 0
         consecutiveNoSixes = 0;
     }
     
@@ -117,16 +131,52 @@ export const rollDice = (state: LudoGameState): LudoGameState => {
         dice,
         diceUsed,
         waitingForRoll: false,
-        log: [...(state.log || []), `Rolled [${dice.join(', ')}]`],
+        stateVersion: (state.stateVersion || 0) + 1,
+        eventId: (state.eventId || 0) + 1,
     };
 };
 
 export interface MoveAction {
     seedIndex: number;
     diceIndices: number[];
+    targetZone: LudoZone;
     targetPos: number;
     isCapture: boolean;
 }
+
+const pushSingleMove = (state: LudoGameState, singleMoves: MoveAction[], player: LudoPlayer, sIdx: number, dIdx: number, nextPos: number) => {
+    let nextZone: LudoZone = 'TRACK';
+    if (nextPos > 51) {
+        nextZone = 'FINISH';
+    }
+
+    if (nextPos <= 56) {
+        let isCapture = false;
+
+        if (nextZone === 'TRACK') {
+            const opponentIndex = (state.currentPlayerIndex + 1) % 2;
+            const opponent = state.players[opponentIndex];
+            
+            const absIndex = getAbsoluteIndex(player.color, nextPos);
+            const isSafeTile = state.level < 3 && SAFE_TILES.includes(absIndex);
+
+            if (!isSafeTile) {
+                isCapture = opponent.seeds.some(oppSeed => {
+                    if (oppSeed.zone !== 'TRACK') return false;
+                    return absIndex === getAbsoluteIndex(opponent.color, oppSeed.tileIndex);
+                });
+            }
+        }
+        
+        singleMoves.push({ 
+            seedIndex: sIdx, 
+            diceIndices: [dIdx], 
+            targetZone: nextZone, 
+            targetPos: nextPos, 
+            isCapture 
+        });
+    }
+};
 
 export const getValidMoves = (state: LudoGameState): MoveAction[] => {
     if (state.waitingForRoll || state.winner) return [];
@@ -134,108 +184,58 @@ export const getValidMoves = (state: LudoGameState): MoveAction[] => {
     const player = state.players[state.currentPlayerIndex];
     const singleMoves: MoveAction[] = [];
 
-    // 1. Generate all possible Single Die moves first
     state.dice.forEach((die, dIdx) => {
         if (state.diceUsed[dIdx]) return;
 
         player.seeds.forEach((seed, sIdx) => {
-            // A. Move out of House
-            if (seed.position === HOUSE_POS) {
+            if (seed.zone === 'HOME') {
                 if (die === 6) {
-                    singleMoves.push({ seedIndex: sIdx, diceIndices: [dIdx], targetPos: 0, isCapture: false });
+                    singleMoves.push({ seedIndex: sIdx, diceIndices: [dIdx], targetZone: 'TRACK', targetPos: 0, isCapture: false });
                 }
                 return;
             }
 
-            // B. Already Finished
-            if (seed.position === FINISH_POS) return;
+            if (seed.zone === 'FINISH' && seed.tileIndex === 56) return;
 
-            // C. Move on Track
-            const nextPos = seed.position + die;
-            if (nextPos <= FINISH_POS) {
-                // Check capture logic for single move
-                let isCapture = false;
-                if (nextPos >= 0 && nextPos <= 51) {
-                    const opponentIndex = (state.currentPlayerIndex + 1) % 2;
-                    const opponent = state.players[opponentIndex];
-                    const { LudoBoardData } = require('./LudoCoordinates');
-                    const activePlayerPath = LudoBoardData.getPathForColor(player.color);
-                    const targetCoord = activePlayerPath[nextPos];
-
-                    if (targetCoord) {
-                        const isSafeTile = state.level < 3 && LudoBoardData.shieldPositions.some((pos: any) =>
-                            Math.abs(pos.x - targetCoord.x) < 0.01 && Math.abs(pos.y - targetCoord.y) < 0.01
-                        );
-
-                        if (!isSafeTile) {
-                            isCapture = opponent.seeds.some(oppSeed => {
-                                if (oppSeed.position < 0 || oppSeed.position >= 52) return false;
-                                const opponentPath = LudoBoardData.getPathForColor(opponent.color);
-                                const oppCoord = opponentPath[oppSeed.position];
-                                if (!oppCoord) return false;
-                                return Math.abs(targetCoord.x - oppCoord.x) < 0.01 &&
-                                    Math.abs(targetCoord.y - oppCoord.y) < 0.01;
-                            });
-                        }
-                    }
-                }
-                singleMoves.push({ seedIndex: sIdx, diceIndices: [dIdx], targetPos: nextPos, isCapture });
-            }
+            const nextPos = seed.tileIndex + die;
+            pushSingleMove(state, singleMoves, player, sIdx, dIdx, nextPos);
         });
     });
 
-    // 2. CHECK FOR COMBINATION LOGIC
-    // We only combine if:
-    // a. We have 2 unused dice (implied level >= 3)
-    // b. Exactly ONE seed is capable of moving (meaning no other seed can use the "remaining" die)
     const activeDiceCount = state.dice.filter((_, i) => !state.diceUsed[i]).length;
-
     if (activeDiceCount === 2) {
-        // Get unique seed indices that have valid moves
         const movableSeedIndices = [...new Set(singleMoves.map(m => m.seedIndex))];
 
         if (movableSeedIndices.length === 1) {
             const seedIndex = movableSeedIndices[0];
             const seed = player.seeds[seedIndex];
 
-            // EXCEPTION: If the seed is in the HOUSE, we do NOT combine (Move Out + Move is sequential, not atomic)
-            if (seed.position !== HOUSE_POS) {
-
-                // Calculate Combined Move
+            if (seed.zone !== 'HOME') {
                 const totalDiceValue = state.dice[0] + state.dice[1];
-                const combinedTarget = seed.position + totalDiceValue;
+                const combinedTarget = seed.tileIndex + totalDiceValue;
 
-                if (combinedTarget <= FINISH_POS) {
-                    // Recalculate Capture for the FINAL destination
+                if (combinedTarget <= 56) {
+                    let nextZone: LudoZone = combinedTarget > 51 ? 'FINISH' : 'TRACK';
                     let isCapture = false;
-                    if (combinedTarget >= 0 && combinedTarget <= 51) {
+
+                    if (nextZone === 'TRACK') {
                         const opponentIndex = (state.currentPlayerIndex + 1) % 2;
                         const opponent = state.players[opponentIndex];
-                        const { LudoBoardData } = require('./LudoCoordinates');
-                        const activePlayerPath = LudoBoardData.getPathForColor(player.color);
-                        const targetCoord = activePlayerPath[combinedTarget];
+                        const absIndex = getAbsoluteIndex(player.color, combinedTarget);
+                        const isSafeTile = state.level < 3 && SAFE_TILES.includes(absIndex);
 
-                        if (targetCoord) {
-                            const isSafeTile = state.level < 3 && LudoBoardData.shieldPositions.some((pos: any) =>
-                                Math.abs(pos.x - targetCoord.x) < 0.01 && Math.abs(pos.y - targetCoord.y) < 0.01
-                            );
-                            if (!isSafeTile) {
-                                isCapture = opponent.seeds.some(oppSeed => {
-                                    if (oppSeed.position < 0 || oppSeed.position >= 52) return false;
-                                    const opponentPath = LudoBoardData.getPathForColor(opponent.color);
-                                    const oppCoord = opponentPath[oppSeed.position];
-                                    if (!oppCoord) return false;
-                                    return Math.abs(targetCoord.x - oppCoord.x) < 0.01 &&
-                                        Math.abs(targetCoord.y - oppCoord.y) < 0.01;
-                                });
-                            }
+                        if (!isSafeTile) {
+                            isCapture = opponent.seeds.some(oppSeed => {
+                                if (oppSeed.zone !== 'TRACK') return false;
+                                return absIndex === getAbsoluteIndex(opponent.color, oppSeed.tileIndex);
+                            });
                         }
                     }
 
-                    // Return ONLY the combined move (forces the player to move the full distance)
                     return [{
                         seedIndex: seedIndex,
-                        diceIndices: [0, 1], // Mark both dice as used
+                        diceIndices: [0, 1], 
+                        targetZone: nextZone,
                         targetPos: combinedTarget,
                         isCapture: isCapture
                     }];
@@ -248,129 +248,85 @@ export const getValidMoves = (state: LudoGameState): MoveAction[] => {
 };
 
 export const applyMove = (state: LudoGameState, move: MoveAction): LudoGameState => {
-    // Defensive guard: if state is stale or corrupted (e.g. server auto-played and turn switched)
-    // return state unchanged rather than crashing.
     if (!state || !state.players || !state.diceUsed || !move || !move.diceIndices) {
-        console.warn('[applyMove] Stale or invalid state/move — skipping.');
         return state;
     }
 
     const player = state.players[state.currentPlayerIndex];
-    if (!player || !player.seeds) {
-        console.warn('[applyMove] Current player is undefined — skipping.');
-        return state;
-    }
+    if (!player || !player.seeds) return state;
 
-    const newDiceUsed = [...(state.diceUsed || [])];
+    const newDiceUsed = [...state.diceUsed];
     move.diceIndices.forEach(idx => newDiceUsed[idx] = true);
 
     const newPlayers = JSON.parse(JSON.stringify(state.players));
     const activePlayer = newPlayers[state.currentPlayerIndex];
-    const targetSeed = activePlayer?.seeds?.[move.seedIndex];
-    if (!targetSeed) {
-        console.warn('[applyMove] Target seed not found — skipping.');
-        return state;
-    }
+    const targetSeed = activePlayer.seeds[move.seedIndex];
 
-    // Always track landing position (where the move logically ends)
-    const oldPosition = targetSeed.position;
-    targetSeed.landingPos = move.targetPos;
-    targetSeed.animationDelay = 0; // Reset delay for the moving seed
-    // Set the new position for the moving seed
-    targetSeed.position = move.targetPos;
+    if (!targetSeed) return state;
 
-    // --- CAPTURE LOGIC ---
-    // Only check for captures on the main track (positions 0-51), not in victory lane (52-57) or finish (58)
-    if (move.targetPos >= 0 && move.targetPos <= 51) {
+    const oldPosition = targetSeed.tileIndex;
+    targetSeed.landingZone = move.targetZone;
+    targetSeed.landingIndex = move.targetPos;
+    targetSeed.animationDelay = 0;
+    
+    targetSeed.zone = move.targetZone;
+    targetSeed.tileIndex = move.targetPos;
+
+    let stateChanged = true;
+
+    if (move.targetZone === 'TRACK') {
         const opponentIndex = (state.currentPlayerIndex + 1) % 2;
         const opponent = newPlayers[opponentIndex];
 
-        // Get the physical coordinates of the capturing seed's target position
-        const { LudoBoardData } = require('./LudoCoordinates');
-        const activePlayerPath = LudoBoardData.getPathForColor(activePlayer.color);
-        const targetCoord = activePlayerPath[move.targetPos];
+        const absIndex = getAbsoluteIndex(activePlayer.color, move.targetPos);
+        const isSafeTile = state.level < 3 && SAFE_TILES.includes(absIndex);
 
-        if (targetCoord) {
-            // Check if this is a safe tile (Shield) - only for level < 3
-            const isSafeTile = state.level < 3 && LudoBoardData.shieldPositions.some((pos: any) => {
-                const tolerance = 0.01;
-                return Math.abs(pos.x - targetCoord.x) < tolerance &&
-                    Math.abs(pos.y - targetCoord.y) < tolerance;
+        if (!isSafeTile) {
+            const capturedOpponentSeed = opponent.seeds.find((oppSeed: LudoSeed) => {
+                if (oppSeed.zone !== 'TRACK') return false;
+                return absIndex === getAbsoluteIndex(opponent.color, oppSeed.tileIndex);
             });
 
-            if (!isSafeTile) {
-                // Check each opponent seed - find only the first one to capture
-                const capturedOpponentSeed = opponent.seeds.find((oppSeed: LudoSeed) => {
-                    // Skip seeds in house, finished, or in victory lane
-                    if (oppSeed.position < 0 || oppSeed.position >= 52) return false;
+            if (capturedOpponentSeed) {
+                capturedOpponentSeed.zone = 'HOME';
+                capturedOpponentSeed.tileIndex = -1;
+                capturedOpponentSeed.landingZone = 'HOME';
+                capturedOpponentSeed.landingIndex = -1;
 
-                    // Get opponent seed's physical coordinates
-                    const opponentPath = LudoBoardData.getPathForColor(opponent.color);
-                    const oppCoord = opponentPath[oppSeed.position];
+                const steps = oldPosition === -1 ? 1 : Math.max(0, move.targetPos - oldPosition);
+                capturedOpponentSeed.animationDelay = steps * 200;
 
-                    if (oppCoord) {
-                        // Compare physical coordinates (with small tolerance for floating point)
-                        const tolerance = 0.01;
-                        const sameX = Math.abs(targetCoord.x - oppCoord.x) < tolerance;
-                        const sameY = Math.abs(targetCoord.y - oppCoord.y) < tolerance;
-                        return sameX && sameY;
-                    }
-                    return false;
-                });
-
-                if (capturedOpponentSeed) {
-                    console.log(`CAPTURE! Player ${activePlayer.id} captured opponent seed ${capturedOpponentSeed.id} at position ${capturedOpponentSeed.position}`);
-                    capturedOpponentSeed.position = HOUSE_POS; // Send opponent seed back to house
-                    capturedOpponentSeed.landingPos = HOUSE_POS;
-
-                    // Calculate delay based on how many steps the capturing seed takes
-                    const steps = oldPosition === HOUSE_POS ? 1 : Math.max(0, move.targetPos - oldPosition);
-                    // 300ms per tile (TILE_ANIMATION_DURATION)
-                    capturedOpponentSeed.animationDelay = steps * 300;
-
-                    // AS PER AGGRESSIVE MODE: Capturing seed moves to finish! (Only for Warrior level and above)
-                    if (state.level >= 3) {
-                        targetSeed.position = FINISH_POS;
-                    }
+                if (state.level >= 3) {
+                    targetSeed.zone = 'FINISH';
+                    targetSeed.tileIndex = 56;
                 }
             }
         }
     }
 
-    // Check Win
     let winner = state.winner;
-    if (activePlayer.seeds.every((s: LudoSeed) => s.position === FINISH_POS)) {
+    if (activePlayer.seeds.every((s: LudoSeed) => s.zone === 'FINISH' && s.tileIndex === 56)) {
         winner = activePlayer.id;
     }
 
-    // Turn Logic
     let nextTurn = state.currentPlayerIndex;
     let waiting = state.waitingForRoll;
     let resetDice = newDiceUsed;
 
-    // If all dice are used:
     if (resetDice.every(u => u)) {
-
-        // --- NEW RULE: ONLY 6 AND 6 GIVES ANOTHER TURN (Multi-die) ---
-        // --- OR ROLLED 6 (Single-die) ---
-        // --- OR CAPTURE (Only for level 1 & 2) ---
         const rolledDoubleSix = state.level >= 3 && state.dice[0] === 6 && state.dice[1] === 6;
         const rolledSingleSix = state.level < 3 && state.dice[0] === 6;
         const captureBonus = move.isCapture && state.level < 3;
 
         if ((rolledDoubleSix || rolledSingleSix || captureBonus) && !winner) {
-            // BONUS TURN (Same Player)
             waiting = true;
             resetDice = state.level >= 3 ? [false, false] : [false];
-            // nextTurn remains current
         } else {
-            // PASS TURN
             nextTurn = (state.currentPlayerIndex + 1) % 2;
             waiting = true;
             resetDice = state.level >= 3 ? [false, false] : [false];
         }
     } else {
-        // STILL MOVING (One die remaining)
         waiting = false;
     }
 
@@ -382,7 +338,8 @@ export const applyMove = (state: LudoGameState, move: MoveAction): LudoGameState
         waitingForRoll: waiting,
         dice: waiting ? [] : state.dice,
         winner: winner,
-        log: [...(state.log || []), `Moved seed`],
+        stateVersion: stateChanged ? (state.stateVersion || 0) + 1 : state.stateVersion,
+        eventId: (state.eventId || 0) + 1,
     };
 };
 
@@ -393,6 +350,7 @@ export const passTurn = (state: LudoGameState): LudoGameState => {
         waitingForRoll: true,
         diceUsed: state.level >= 3 ? [false, false] : [false],
         dice: [],
-        log: [...(state.log || []), `Turn passed`],
+        stateVersion: (state.stateVersion || 0) + 1,
+        eventId: (state.eventId || 0) + 1,
     };
 };
