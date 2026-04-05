@@ -23,20 +23,23 @@ class SocketService {
             // 2. Relaxed connection timeout — gives Render time to wake from cold-start
             timeout: 45000,
 
-            // 3. Smart reconnection strategy
+            // 3. Aggressive reconnection strategy (tuned from ADB logs: was 1000/5000 = 24s gap)
             reconnection: true,
             reconnectionAttempts: Infinity,  // Never stop trying
-            reconnectionDelay: 1000,         // Start fast
-            reconnectionDelayMax: 5000,      // Cap at 5s between attempts
-            randomizationFactor: 0.5,        // Add jitter to avoid thundering herd
+            reconnectionDelay: 500,          // Start retrying in 500ms (was 1000)
+            reconnectionDelayMax: 2000,      // Cap at 2s between attempts (was 5000)
+            randomizationFactor: 0.3,        // Slight jitter, less wasted time
 
             autoConnect: true,
             forceNew: false,
         });
 
-        // Optional debug logs for Doze-mode ping tracking
-        this.socket.on('ping', () => console.log('[SocketService] Ping sent'));
-        this.socket.on('pong', (ms) => console.log('[SocketService] Pong received in', ms, 'ms'));
+        // Transport-level error logging (catches issues connect_error misses)
+        if (this.socket.io?.engine) {
+            this.socket.io.engine.on('error', (err: any) => {
+                console.warn('[SocketService] Engine transport error:', err?.message || err);
+            });
+        }
 
         this.setupBaseListeners();
     }
@@ -83,7 +86,9 @@ class SocketService {
 
         this.socket.on('disconnect', (reason) => {
             console.log('[SocketService] Disconnected:', reason);
-            if (reason === 'io server disconnect' || reason === 'ping timeout' || reason === 'transport close') {
+            // Force immediate reconnect for all transport failures
+            // 'transport error' was MISSING before — caused 24s reconnect delay (ADB log fix)
+            if (reason === 'io server disconnect' || reason === 'ping timeout' || reason === 'transport close' || reason === 'transport error') {
                 console.log('[SocketService] Transport lost. Forcing immediate reconnect attempt...');
                 this.socket?.connect(); 
             }
