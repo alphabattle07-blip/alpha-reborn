@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'flex-start',
         paddingHorizontal: 8,
-        paddingVertical: 65,
+        paddingVertical: 8,
     },
     containerLandscape: {
         transform: [{ scale: 0.8 }],

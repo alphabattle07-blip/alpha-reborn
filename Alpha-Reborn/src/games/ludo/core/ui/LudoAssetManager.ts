@@ -12,6 +12,7 @@ export const LudoAssetManager = {
         winHome: require("../../../../assets/sounds/ludosoundeffect/winhome.wav"),
         seedMove: require("../../../../assets/sounds/ludosoundeffect/seedmove.wav"),
         diceRolling: require("../../../../assets/sounds/ludosoundeffect/dicerolling.mp3"),
+        bgm: require("../../../../assets/sounds/backgroudsound/backgrounds1_short.mp3"),
     },
 
     async preload(): Promise<boolean> {

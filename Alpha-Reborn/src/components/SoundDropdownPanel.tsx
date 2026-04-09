@@ -11,7 +11,15 @@ type SoundControlProps = {
 
 const SoundDropdownPanel: React.FC<SoundControlProps> = ({ gameId }) => {
     const dispatch = useDispatch();
-    const soundSettings = useSelector((state: RootState) => state.soundSettings[gameId]);
+    const rawSoundSettings = useSelector((state: RootState) => state.soundSettings[gameId]) || {};
+    
+    // Fallback to true if undefined (due to old persisted state)
+    const soundSettings = {
+        bgm: rawSoundSettings.bgm ?? true,
+        sfx: rawSoundSettings.sfx ?? true,
+        voice: (rawSoundSettings as any).voice ?? true,
+    };
+
     const [isOpen, setIsOpen] = useState(false);
 
     const handleToggle = (setting: 'voice' | 'sfx' | 'bgm') => {
@@ -25,7 +33,7 @@ const SoundDropdownPanel: React.FC<SoundControlProps> = ({ gameId }) => {
                 style={styles.mainBtn}
                 onPress={() => setIsOpen(!isOpen)}
             >
-                <Ionicons name="settings" size={24} color="#FFF" />
+                <Ionicons name="musical-notes" size={24} color="#FFF" />
             </TouchableOpacity>
 
             {/* Dropdown Panel */}
@@ -57,10 +65,10 @@ const SoundDropdownPanel: React.FC<SoundControlProps> = ({ gameId }) => {
                         <View style={styles.row}>
                             <Text style={styles.label}>Voice</Text>
                             <Switch
-                                value={(soundSettings as { voice?: boolean }).voice}
+                                value={soundSettings.voice}
                                 onValueChange={() => handleToggle('voice')}
                                 trackColor={{ false: "#4A4A4A", true: "#FFD700" }}
-                                thumbColor={(soundSettings as { voice?: boolean }).voice ? "#FFF" : "#f4f3f4"}
+                                thumbColor={soundSettings.voice ? "#FFF" : "#f4f3f4"}
                             />
                         </View>
                     )}

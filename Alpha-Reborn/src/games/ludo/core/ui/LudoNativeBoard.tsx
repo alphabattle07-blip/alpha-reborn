@@ -17,10 +17,6 @@ import { LudoBoardData } from './LudoCoordinates';
 import { playLudoSound } from '../useLudoSoundEffects';
 
 const boardImageSource = require('../../../../assets/images/ludoBoard.png');
-const blueImageSource = require('../../../../assets/images/blue.png');
-const greenImageSource = require('../../../../assets/images/green.png');
-const redImageSource = require('../../../../assets/images/red.png');
-const yellowImageSource = require('../../../../assets/images/yellow.png');
 
 // Normalized positions for color images (center of each yard)
 const COLOR_IMAGE_POSITIONS = {
@@ -30,33 +26,6 @@ const COLOR_IMAGE_POSITIONS = {
     blue: { x: 0.0190, y: 0.8850 },
 };
 
-const HOME_OFFSET = 0.025;
-const HOME_SEED_POSITIONS = {
-    red: [
-        { x: 0.1090 - HOME_OFFSET, y: 0.009 - HOME_OFFSET },
-        { x: 0.1090 + HOME_OFFSET, y: 0.009 - HOME_OFFSET },
-        { x: 0.1090 - HOME_OFFSET, y: 0.009 + HOME_OFFSET },
-        { x: 0.1090 + HOME_OFFSET, y: 0.009 + HOME_OFFSET },
-    ],
-    green: [
-        { x: 0.740 - HOME_OFFSET, y: 0.035 - HOME_OFFSET },
-        { x: 0.740 + HOME_OFFSET, y: 0.035 - HOME_OFFSET },
-        { x: 0.740 - HOME_OFFSET, y: 0.035 + HOME_OFFSET },
-        { x: 0.740 + HOME_OFFSET, y: 0.035 + HOME_OFFSET },
-    ],
-    yellow: [
-        { x: 0.670 - HOME_OFFSET, y: 0.850 - HOME_OFFSET },
-        { x: 0.670 + HOME_OFFSET, y: 0.850 - HOME_OFFSET },
-        { x: 0.670 - HOME_OFFSET, y: 0.850 + HOME_OFFSET },
-        { x: 0.670 + HOME_OFFSET, y: 0.850 + HOME_OFFSET },
-    ],
-    blue: [
-        { x: 0.2490 - HOME_OFFSET, y: 0.9500 - HOME_OFFSET },
-        { x: 0.1500 + HOME_OFFSET, y: 0.9500 - HOME_OFFSET },
-        { x: 0.1500 - HOME_OFFSET, y: 0.8990 + HOME_OFFSET },
-        { x: 0.0480 + HOME_OFFSET, y: 0.8990 + HOME_OFFSET },
-    ],
-};
 
 const BOARD_SCALE = 0.96;
 const SIDE_IMAGE_SCALE = 0.137;
@@ -95,9 +64,9 @@ const AnimatedNativeSeed = React.memo(({ id, playerId, seedSubIndex, currentPos,
             const yardArr = LudoBoardData.yards[colorName];
             norm = yardArr[seedSubIndex % 4];
         } else if (stepIndex >= 56) {
-            const posArray = HOME_SEED_POSITIONS[colorName];
+            const posArray = (LudoBoardData as any).home[colorName];
             const pos = posArray[seedSubIndex % 4];
-            return { x: pos.x * canvasWidth, y: pos.y * canvasHeight };
+            return { x: boardX + pos.x * boardSize, y: boardY + pos.y * boardSize };
         } else {
             if (path[stepIndex]) norm = path[stepIndex];
         }
@@ -252,7 +221,7 @@ const AnimatedNativeSeed = React.memo(({ id, playerId, seedSubIndex, currentPos,
             return;
         }
 
-        if (oldPos === -1) {
+        if (oldPos === -1 && landingPos === 0) {
             cx.value = withTiming(target.x, { duration: 250 });
             cy.value = withTiming(target.y, { duration: 250 });
             scale.value = withSequence(
@@ -295,9 +264,9 @@ const AnimatedNativeSeed = React.memo(({ id, playerId, seedSubIndex, currentPos,
 
         if (landingPos !== newPos) {
             pathProgress.value = 0;
+            const captureTarget = getTargetPixels(newPos, true);
             pathProgress.value = withTiming(1, { duration: moveDuration, easing: Easing.linear }, (finished) => {
                 if (finished) {
-                    const captureTarget = getTargetPixels(newPos, true);
                     cx.value = withTiming(captureTarget.x, { duration: 400, easing: Easing.out(Easing.quad) });
                     cy.value = withTiming(captureTarget.y, { duration: 400, easing: Easing.out(Easing.quad) });
                     scale.value = withSequence(
@@ -417,9 +386,9 @@ const getSeedPixelPosition = (seedPos: number, playerId: string, seedSubIndex: n
         const yardArr = LudoBoardData.yards[colorName];
         norm = yardArr[seedSubIndex % 4];
     } else if (seedPos >= 56) {
-        const posArray = HOME_SEED_POSITIONS[colorName];
+        const posArray = (LudoBoardData as any).home[colorName];
         const pos = posArray[seedSubIndex % 4];
-        return { x: pos.x * canvasWidth, y: pos.y * canvasHeight };
+        return { x: boardX + pos.x * boardSize, y: boardY + pos.y * boardSize };
     } else {
         if (path[seedPos]) norm = path[seedPos];
     }
@@ -444,20 +413,27 @@ type LudoNativeBoardProps = {
     selectedSeedIndex?: number | null;
     pendingSeedIndices?: number[];
     localPlayerId?: string;
+    boardX?: number;
+    boardY?: number;
+    boardSize?: number;
 };
 
-const LudoNativeBoardComponent = ({ onBoardPress, positions, level, width: propWidth, height: propHeight, selectedSeedIndex, pendingSeedIndices: propPendingSeedIndices, localPlayerId }: LudoNativeBoardProps) => {
+const LudoNativeBoardComponent = ({ onBoardPress, positions, level, width: propWidth, height: propHeight, selectedSeedIndex, pendingSeedIndices: propPendingSeedIndices, localPlayerId, boardX: propBoardX, boardY: propBoardY, boardSize: propBoardSize }: LudoNativeBoardProps) => {
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
     const canvasWidth = propWidth ?? (windowWidth * 0.95);
     const canvasHeight = propHeight ?? (windowHeight * 0.92);
 
     const throttledPositions = useThrottledValue(positions, 66);
 
-    const boardSize = canvasWidth * BOARD_SCALE;
+    const boardSize = propBoardSize ?? (canvasWidth * BOARD_SCALE);
     const marginX = (canvasWidth - boardSize) / 2;
     const marginY = (canvasHeight - boardSize) / 2;
-    const boardX = marginX;
-    const boardY = marginY;
+    const boardX = propBoardX ?? marginX;
+    const boardY = propBoardY ?? marginY;
+    
+    // Ensure canvas matches the board's area for consistent seed conversion
+    const finalCanvasWidth = propWidth ?? canvasWidth;
+    const finalCanvasHeight = propHeight ?? canvasHeight;
 
     const seedRadius = (boardSize / 15) * 0.35;
     const sideImageSize = canvasWidth * SIDE_IMAGE_SCALE;
@@ -561,7 +537,7 @@ const LudoNativeBoardComponent = ({ onBoardPress, positions, level, width: propW
                 .onEnd(({ x, y }) => runOnJS(handleTap)(x, y))
             }
         >
-            <View style={{ width: canvasWidth, height: canvasHeight }}>
+            <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
                 <Image
                     source={boardImageSource}
                     style={{
@@ -573,49 +549,63 @@ const LudoNativeBoardComponent = ({ onBoardPress, positions, level, width: propW
                     }}
                     resizeMode="stretch"
                 />
-                <Image
-                    source={greenImageSource}
-                    style={{
-                        position: 'absolute',
-                        left: COLOR_IMAGE_POSITIONS.green.x * canvasWidth - sideImageSize / 2,
-                        top: COLOR_IMAGE_POSITIONS.green.y * canvasHeight - sideImageSize / 2,
-                        width: sideImageSize * 3,
-                        height: sideImageSize * 2.5,
-                    }}
-                    resizeMode="contain"
-                />
-                <Image
-                    source={blueImageSource}
-                    style={{
-                        position: 'absolute',
-                        left: COLOR_IMAGE_POSITIONS.blue.x * canvasWidth - sideImageSize / 2,
-                        top: COLOR_IMAGE_POSITIONS.blue.y * canvasHeight - sideImageSize / 2,
-                        width: sideImageSize * 3,
-                        height: sideImageSize * 2.5,
-                    }}
-                    resizeMode="contain"
-                />
+                
+                {/* Yard Border Outlines (Destination boxes for finished seeds) */}
+                {[
+                    { color: '#008000', id: 'green' }, // Green
+                    { color: '#0000ff', id: 'blue' }, // Blue
+                ].map((yard) => {
+                    const seedDiameter = seedRadius * 2;
+                    const yardWidth = (seedDiameter * 4) + (boardSize * 0.016) + (boardSize * 0.034);
+                    const yardHeight = seedDiameter + (boardSize * 0.028);
+                    
+                    let boxLeft = 0;
+                    let boxTop = 0;
+                    if (yard.id === 'blue') {
+                        boxLeft = boardX;
+                        boxTop = boardY + boardSize + (boardSize * 0.048);
+                    } else {
+                        boxLeft = boardX + boardSize - yardWidth;
+                        boxTop = boardY + (-0.095 * boardSize) - (yardHeight / 2);
+                    }
+
+                    return (
+                        <View
+                            key={`yard-border-outline-${yard.id}`}
+                            style={{
+                                position: 'absolute',
+                                left: boxLeft,
+                                top: boxTop,
+                                width: yardWidth,
+                                height: yardHeight,
+                                borderWidth: 2.5,
+                                borderColor: yard.color,
+                                borderRadius: 12,
+                            }}
+                            pointerEvents="none"
+                        />
+                    );
+                })}
 
                 <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, width: canvasWidth, height: canvasHeight }}>
                     <Svg width={canvasWidth} height={canvasHeight} style={{ position: 'absolute', top: 0, left: 0 }}>
-                        {(level === undefined || level < 3) && LudoBoardData.shieldPositions.map((pos, idx) => (
-                            <SvgGroup
-                                key={`shield-${idx}`}
-                                x={boardX + pos.x * boardSize + SHIELD_OFFSET_X}
-                                y={boardY + pos.y * boardSize + SHIELD_OFFSET_Y}
-                            >
-                                <SvgGroup scale={(boardSize / 15 / 24) * SHIELD_USER_SCALE}>
+                        {level !== undefined && level < 3 && LudoBoardData.shieldPositions.map((pos, idx) => {
+                            const shieldX = boardX + pos.x * boardSize;
+                            const shieldY = boardY + pos.y * boardSize;
+                            const shieldSize = boardSize * 0.04; 
+
+                            return (
+                                <SvgGroup key={`shield-${idx}`} transform={`translate(${shieldX - (shieldSize/2)}, ${shieldY - (shieldSize/2)}) scale(${shieldSize / 24})`}>
                                     <SvgPath
                                         d={SHIELD_PATH}
-                                        fill="rgba(255, 255, 255, 0.6)"
-                                        stroke="rgba(0,0,0,0.3)"
-                                        strokeWidth={2}
-                                        x={-12}
-                                        y={-12}
+                                        fill="#FFF"
+                                        fillOpacity={0.8}
+                                        stroke="#000"
+                                        strokeWidth={1}
                                     />
                                 </SvgGroup>
-                            </SvgGroup>
-                        ))}
+                            );
+                        })}
                     </Svg>
 
                     {seedsData.map(s => (

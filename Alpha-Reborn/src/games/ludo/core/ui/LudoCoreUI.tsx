@@ -19,34 +19,33 @@ import { useDiceAnimations } from './useDiceAnimations';
 import { LudoDiceOverlay } from './LudoDiceOverlay';
 import { LudoTimerRing } from './LudoTimerRing';
 import { useLudoSoundEffects } from "../useLudoSoundEffects";
-import QuickMuteButton from '../../../../components/QuickMuteButton';
+import SoundDropdownPanel from '../../../../components/SoundDropdownPanel';
 
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#222" },
     boardContainer: { 
-        flex: 1, 
-        justifyContent: "center", 
-        alignItems: 'center',
+        ...StyleSheet.absoluteFillObject,
+        zIndex: 5,
     },
     opponentUIContainer: {
         position: 'absolute',
-        top: 40,
+        top: 70,
         right: 20,
         alignItems: 'flex-start',
         zIndex: 10,
     },
     playerUIContainer: {
         position: 'absolute',
-        bottom: 50,
+        bottom: 120,
         left: 20,
         alignItems: 'flex-start',
         zIndex: 10,
     },
     soundControlContainer: {
         position: 'absolute',
-        top: 100,
-        right: 20,
+        top: 60,
+        left: 20,
         zIndex: 9999,
         elevation: 100,
     }
@@ -94,6 +93,14 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     localPlayerId,
 }) => {
     const navigation = useNavigation();
+    const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+    
+    // ─── Responsive Layout Calculations (Screen-Space Origin) ────────────────
+    // Now using the full screen dimensions as the absolute coordinate root.
+    const boardSize = windowWidth * 0.95 * 0.96;
+    const boardX = (windowWidth - boardSize) / 2;
+    const boardY = (windowHeight - boardSize) / 2;
+
     const [internalGameState, setInternalGameState] = useState<LudoGameState>(
         propGameState ?? initializeGame('blue', 'green', level || 2)
     );
@@ -419,7 +426,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
     const currentDice = frozenDice !== null ? frozenDice.dice : gameState.dice;
     const currentDiceUsed = frozenDice !== null ? frozenDice.diceUsed : gameState.diceUsed;
     const currentIsRolling = (gameState.currentPlayerIndex === 0 ? isRolling : !!isOpponentRolling) && frozenDice === null;
-    const currentDiceCount = (frozenDice !== null ? frozenDice.dice : gameState.dice)?.length || 1;
+    const currentDiceCount = (gameState.level >= 3) ? 2 : ((frozenDice !== null ? frozenDice.dice : gameState.dice)?.length || 1);
     const currentActiveColor = frozenDice !== null ? (frozenDice.playerIndex === 0 ? 'blue' : 'green') : activePlayerColor;
 
     const diceAnimState = useDiceAnimations(currentDice, currentDiceCount, currentIsRolling);
@@ -439,7 +446,7 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
             </View>
 
             {/* Game Board (now also renders the dice visuals natively!) */}
-            <View style={styles.boardContainer} renderToHardwareTextureAndroid={false}>
+            <View style={styles.boardContainer} pointerEvents="box-none" renderToHardwareTextureAndroid={false}>
                 <LudoNativeBoard
                     onBoardPress={handleBoardPress}
                     positions={boardPositions}
@@ -447,6 +454,9 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                     selectedSeedIndex={selectedSeedIndex}
                     pendingSeedIndices={pendingSeedIndices}
                     localPlayerId={localPlayerId}
+                    boardX={boardX}
+                    boardY={boardY}
+                    boardSize={boardSize}
                 />
 
                 {/* Dice rendered as React Native Animated views — NOT inside Skia.
@@ -460,6 +470,9 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                         show1={currentDiceCount > 1 && (currentIsRolling || currentDice.length > 1)}
                         isRolling={currentIsRolling}
                         diceUsed={currentDiceUsed}
+                        boardX={boardX}
+                        boardY={boardY}
+                        boardSize={boardSize}
                     />
                 )}
             </View>
@@ -493,10 +506,14 @@ export const LudoCoreUI: React.FC<LudoGameProps> = ({
                     ...timerSync
                 } : undefined)}
                 isShown={!gameState.winner}
+                boardX={boardX}
+                boardY={boardY}
+                boardSize={boardSize}
+                style={{ zIndex: 999 }} // Ensures it's always tappable
             />
 
             <View style={styles.soundControlContainer} pointerEvents="box-none">
-                <QuickMuteButton gameId="ludo" />
+                <SoundDropdownPanel gameId="ludo" />
             </View>
         </View>
     );

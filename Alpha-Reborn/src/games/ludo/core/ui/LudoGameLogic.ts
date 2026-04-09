@@ -180,6 +180,7 @@ const pushSingleMove = (state: LudoGameState, singleMoves: MoveAction[], player:
 
 export const getValidMoves = (state: LudoGameState): MoveAction[] => {
     if (state.waitingForRoll || state.winner) return [];
+    if (!state.dice || !state.diceUsed) return []; // Defensive: corrupted state from partial server event
 
     const player = state.players[state.currentPlayerIndex];
     const singleMoves: MoveAction[] = [];
@@ -204,17 +205,29 @@ export const getValidMoves = (state: LudoGameState): MoveAction[] => {
 
     const activeDiceCount = state.dice.filter((_, i) => !state.diceUsed[i]).length;
     if (activeDiceCount === 2) {
+        const d0_moves = singleMoves.filter(m => m.diceIndices.includes(0));
+        const d1_moves = singleMoves.filter(m => m.diceIndices.includes(1));
         const movableSeedIndices = [...new Set(singleMoves.map(m => m.seedIndex))];
 
-        if (movableSeedIndices.length === 1) {
-            const seedIndex = movableSeedIndices[0];
-            const seed = player.seeds[seedIndex];
+        const canSplit = movableSeedIndices.length > 1 && d0_moves.length > 0 && d1_moves.length > 0;
 
-            if (seed.zone !== 'HOME') {
-                const totalDiceValue = state.dice[0] + state.dice[1];
-                const combinedTarget = seed.tileIndex + totalDiceValue;
+        if (!canSplit) {
+            const combinedMoves = [];
+            for (const seedIndex of movableSeedIndices) {
+                const seed = player.seeds[seedIndex];
+                let combinedTarget: number | undefined;
 
-                if (combinedTarget <= 56) {
+                if (seed.zone === 'HOME') {
+                    if (state.dice.includes(6)) {
+                        const totalDiceValue = state.dice[0] + state.dice[1];
+                        combinedTarget = totalDiceValue - 6;
+                    }
+                } else {
+                    const totalDiceValue = state.dice[0] + state.dice[1];
+                    combinedTarget = seed.tileIndex + totalDiceValue;
+                }
+
+                if (combinedTarget !== undefined && combinedTarget <= 56) {
                     let nextZone: LudoZone = combinedTarget > 51 ? 'FINISH' : 'TRACK';
                     let isCapture = false;
 
@@ -232,15 +245,16 @@ export const getValidMoves = (state: LudoGameState): MoveAction[] => {
                         }
                     }
 
-                    return [{
+                    combinedMoves.push({
                         seedIndex: seedIndex,
                         diceIndices: [0, 1], 
                         targetZone: nextZone,
                         targetPos: combinedTarget,
                         isCapture: isCapture
-                    }];
+                    });
                 }
             }
+            if (combinedMoves.length > 0) return combinedMoves;
         }
     }
 

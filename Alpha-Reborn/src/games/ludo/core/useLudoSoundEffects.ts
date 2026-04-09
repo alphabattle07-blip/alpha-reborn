@@ -3,6 +3,8 @@ import { Audio } from "expo-av";
 import { LudoGameState, LudoSeed } from "./ui/LudoGameLogic";
 import { LudoAssetManager } from "./ui/LudoAssetManager";
 import { store } from "../../../store";
+import { useSelector } from "react-redux";
+import { RootState } from "../../../store";
 
 interface StateSnapshot {
     seedPositions: Record<string, number>; // Maps seed ID to its position
@@ -40,9 +42,9 @@ const soundCache: Partial<Record<keyof typeof LudoAssetManager.sounds, Audio.Sou
 
 export async function playLudoSound(soundKey: keyof typeof LudoAssetManager.sounds) {
     try {
-        // Enforce Sound Control Settings
-        const soundSettings = store.getState().soundSettings.ludo;
-        if (!soundSettings.sfx) return;
+        // Enforce Sound Control Settings (fallback to true for old persisted state)
+        const soundSettings = store.getState().soundSettings.ludo || {};
+        if (soundSettings.sfx === false) return;
 
         if (!audioModeConfigured) {
             await Audio.setAudioModeAsync({
@@ -84,8 +86,67 @@ export async function playLudoSound(soundKey: keyof typeof LudoAssetManager.soun
  * Reactive hook that plays Ludo sound effects by watching GameState changes.
  */
 export function useLudoSoundEffects(gameState: LudoGameState | null) {
+    // Fallback to true if undefined due to older persisted state without bgm key
+    const bgmSetting = useSelector((state: RootState) => state.soundSettings.ludo?.bgm ?? true);
+    const bgmSoundRef = useRef<Audio.Sound | null>(null);
     const prevRef = useRef<StateSnapshot>(takeSnapshot(null));
     const isFirstUpdate = useRef(true);
+
+    // --- Background Music (BGM) Lifecycle ---
+    useEffect(() => {
+        let isCancelled = false;
+
+        async function manageBGM() {
+            try {
+                if (bgmSetting) {
+                    if (bgmSoundRef.current) {
+                        const status = await bgmSoundRef.current.getStatusAsync();
+                        if (status.isLoaded && !status.isPlaying) {
+                            await bgmSoundRef.current.playAsync();
+                        }
+                    } else {
+                        const source = LudoAssetManager.sounds.bgm;
+                        if (!source) return;
+
+                        const { sound } = await Audio.Sound.createAsync(
+                            source,
+                            { shouldPlay: true, isLooping: true, volume: 0.5 }
+                        );
+                        
+                        if (isCancelled) {
+                            await sound.unloadAsync();
+                            return;
+                        }
+                        bgmSoundRef.current = sound;
+                    }
+                } else {
+                    if (bgmSoundRef.current) {
+                        await bgmSoundRef.current.stopAsync();
+                        await bgmSoundRef.current.unloadAsync();
+                        bgmSoundRef.current = null;
+                    }
+                }
+            } catch (error) {
+                console.warn("🔊 [LudoBGM] Error managing background music:", error);
+            }
+        }
+
+        manageBGM();
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [bgmSetting]);
+
+    // Cleanup BGM on unmount
+    useEffect(() => {
+        return () => {
+            if (bgmSoundRef.current) {
+                bgmSoundRef.current.unloadAsync();
+                bgmSoundRef.current = null;
+            }
+        };
+    }, []);
 
     useEffect(() => {
         if (!gameState) return;

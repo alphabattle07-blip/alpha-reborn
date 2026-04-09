@@ -20,9 +20,6 @@ export default function GameLobby() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRight}>
-        <SoundDropdownPanel gameId={gameId as 'whot' | 'ludo'} />
-      </View>
       <Text style={styles.title}>Welcome to {gameId} Lobby</Text>
 
       <TouchableOpacity style={styles.button} onPress={() => handleNavigate('online')}>

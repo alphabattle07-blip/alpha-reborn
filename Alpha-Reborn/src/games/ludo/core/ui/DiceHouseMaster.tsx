@@ -14,14 +14,7 @@ import {
 } from 'react-native';
 import { LudoTimerRing } from './LudoTimerRing';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-const DICE_POS = {
-    blue:  { x: 0.385, y: 0.800 },
-    green: { x: 0.600, y: 0.270 },
-} as const;
 
-const HOUSE_W = 90;
-const HOUSE_H = 60;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface TimerProps {
@@ -42,6 +35,11 @@ interface DiceHouseMasterProps {
     isRolling?: boolean;
     timerProps?: TimerProps;
     isShown?: boolean;
+    style?: any;
+    // Responsive Layout Props
+    boardX: number;
+    boardY: number;
+    boardSize: number;
 }
 
 // ─── Component (Touch + Timer ONLY — no Canvas!) ─────────────────────────────
@@ -54,25 +52,40 @@ export const DiceHouseMaster: React.FC<DiceHouseMasterProps> = ({
     isRolling = false,
     timerProps,
     isShown = true,
+    style,
+    boardX,
+    boardY,
+    boardSize,
 }) => {
-    const { width: screenW, height: screenH } = useWindowDimensions();
+    const { width: screenW } = useWindowDimensions();
 
-    const pos = DICE_POS[activeColor];
-    const houseLeft = pos.x * screenW - HOUSE_W / 2;
-    const houseTop  = pos.y * screenH - HOUSE_H / 2;
+    // Responsive sizing
+    const houseW = boardSize * 0.23; // Scaled relative to board
+    const houseH = boardSize * 0.13;
+    const yardWidth = (boardSize / 15 * 0.7 * 4) + (boardSize * 0.016) + (boardSize * 0.034); // matches LudoNativeBoard calc
+    const gap = screenW * 0.05; // 5% screen width gap
+
+    let houseLeft = 0;
+    let houseTop = 0;
+
+    if (activeColor === 'blue') {
+        houseLeft = boardX + yardWidth + gap;
+        houseTop = boardY + boardSize + (boardSize * 0.048); // aligned with Blue yard top
+    } else {
+        houseLeft = (boardX + boardSize - yardWidth) - gap - houseW;
+        houseTop = boardY + (-0.095 * boardSize) - (houseH / 2); // Shifted up further to avoid touching board
+    }
 
     const touchStyle = {
         position: 'absolute' as const,
         left: houseLeft,
-        top:  houseTop,
-        width:  HOUSE_W + 4,
-        height: HOUSE_H + 4,
+        top: houseTop,
+        width: houseW,
+        height: houseH,
     };
 
-    if (!isShown) return null;
-
     return (
-        <>
+        <View style={style} pointerEvents="box-none">
             {/* Touch target */}
             <View style={touchStyle} pointerEvents="box-none">
                 <TouchableOpacity
@@ -98,14 +111,14 @@ export const DiceHouseMaster: React.FC<DiceHouseMasterProps> = ({
                         turnDuration={timerProps.turnDuration}
                         redAt={timerProps.redAt}
                         serverTimeOffset={timerProps.serverTimeOffset}
-                        width={HOUSE_W + 4}
-                        height={HOUSE_H + 4}
+                        width={houseW}
+                        height={houseH}
                         borderRadius={17}
                         strokeWidth={3}
                     />
                 </View>
             )}
-        </>
+        </View>
     );
 };
 

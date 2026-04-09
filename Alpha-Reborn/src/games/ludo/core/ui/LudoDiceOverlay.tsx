@@ -14,19 +14,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 // ── Layout Constants (must match DiceHouseMaster touch targets) ──────────────
-const DICE_POS = {
-    blue:  { x: 0.385, y: 0.800 },
-    green: { x: 0.600, y: 0.270 },
-} as const;
 
-const HOUSE_W = 90;
-const HOUSE_H = 60;
-const DIE_PADDING_X = 7.5;
-const DIE_PADDING_Y = 12;
-const DIE_SIZE = 35;
-const DIE_GAP = 5;
-const PIP_RADIUS = DIE_SIZE * 0.09;
-const CORNER_RADIUS = DIE_SIZE * 0.18;
+
 
 // ── Pip Configuration ──────────────────────────────────────────────────────
 // Bitmask: sum of (1 << faceValue) for each visible face
@@ -42,10 +31,11 @@ const SPOTS = [
 
 // ── Single Pip (Animated visibility) ──────────────────────────────────────
 const AnimatedPip = ({
-    cx, cy, visibleMask, faceValue, pipColor,
+    cx, cy, visibleMask, faceValue, pipColor, dieSize, pipRadius,
 }: {
     cx: number; cy: number; visibleMask: number;
     faceValue: SharedValue<number>; pipColor: string;
+    dieSize: number; pipRadius: number;
 }) => {
     const animStyle = useAnimatedStyle(() => {
         'worklet';
@@ -58,11 +48,11 @@ const AnimatedPip = ({
             style={[
                 {
                     position: 'absolute',
-                    left: cx * DIE_SIZE - PIP_RADIUS,
-                    top: cy * DIE_SIZE - PIP_RADIUS,
-                    width: PIP_RADIUS * 2,
-                    height: PIP_RADIUS * 2,
-                    borderRadius: PIP_RADIUS,
+                    left: cx * dieSize - pipRadius,
+                    top: cy * dieSize - pipRadius,
+                    width: pipRadius * 2,
+                    height: pipRadius * 2,
+                    borderRadius: pipRadius,
                     backgroundColor: pipColor,
                 },
                 animStyle,
@@ -73,15 +63,18 @@ const AnimatedPip = ({
 
 // ── Single Die (Animated transform) ──────────────────────────────────────
 const AnimatedDie = ({
-    faceValue, bounce, rotation, scale, isUsed,
+    faceValue, bounce, rotation, scale, isUsed, dieSize, pipRadius,
 }: {
     faceValue: SharedValue<number>;
     bounce: SharedValue<number>;
     rotation: SharedValue<number>;
     scale: SharedValue<number>;
     isUsed: boolean;
+    dieSize: number;
+    pipRadius: number;
 }) => {
     const bgColor = isUsed ? '#d6d6d6' : '#ffffff';
+    const cornerRadius = dieSize * 0.18;
     const pipColor = isUsed ? 'rgba(0,0,0,0.4)' : 'black';
 
     const animStyle = useAnimatedStyle(() => {
@@ -96,9 +89,25 @@ const AnimatedDie = ({
     });
 
     return (
-        <Animated.View style={[styles.die, { backgroundColor: bgColor }, animStyle]}>
+        <Animated.View style={[
+            styles.die, 
+            { 
+                backgroundColor: bgColor, 
+                width: dieSize - 1, 
+                height: dieSize - 1, 
+                borderRadius: cornerRadius 
+            }, 
+            animStyle
+        ]}>
             {/* Shadow layer */}
-            <View style={styles.dieShadow} />
+            <View style={[
+                styles.dieShadow, 
+                { 
+                    width: dieSize - 3, 
+                    height: dieSize - 3, 
+                    borderRadius: cornerRadius 
+                }
+            ]} />
             {/* Pips */}
             {SPOTS.map((s) => (
                 <AnimatedPip
@@ -108,6 +117,8 @@ const AnimatedDie = ({
                     visibleMask={s.visibleMask}
                     faceValue={faceValue}
                     pipColor={pipColor}
+                    dieSize={dieSize}
+                    pipRadius={pipRadius}
                 />
             ))}
         </Animated.View>
@@ -124,53 +135,90 @@ export interface DiceOverlayAnimState {
 }
 
 interface LudoDiceOverlayProps {
-    anim: DiceOverlayAnimState;
+    anim: any;
     activeColor: 'blue' | 'green';
     show0: boolean;
     show1: boolean;
     isRolling: boolean;
     diceUsed: boolean[];
+    // Responsive Layout Props
+    boardX: number;
+    boardY: number;
+    boardSize: number;
 }
 
 export const LudoDiceOverlay: React.FC<LudoDiceOverlayProps> = ({
-    anim, activeColor, show0, show1, isRolling, diceUsed,
+    anim,
+    activeColor,
+    show0,
+    show1,
+    isRolling,
+    diceUsed,
+    boardX,
+    boardY,
+    boardSize,
 }) => {
-    const { width: screenW, height: screenH } = useWindowDimensions();
+    const { width: screenW } = useWindowDimensions();
 
-    const pos = DICE_POS[activeColor];
-    const houseLeft = pos.x * screenW - HOUSE_W / 2;
-    const houseTop  = pos.y * screenH - HOUSE_H / 2;
-    const d0Left = houseLeft + DIE_PADDING_X;
-    const d1Left = houseLeft + DIE_PADDING_X + DIE_SIZE + DIE_GAP;
-    const dTop   = houseTop + DIE_PADDING_Y;
+    // Responsive sizing (match DiceHouseMaster exactly)
+    const houseW = boardSize * 0.23;
+    const houseH = boardSize * 0.13;
+    const yardWidth = (boardSize / 15 * 0.7 * 4) + (boardSize * 0.016) + (boardSize * 0.034);
+    const gap = screenW * 0.05;
+
+    let houseLeft = 0;
+    let houseTop = 0;
+
+    if (activeColor === 'blue') {
+        houseLeft = boardX + yardWidth + gap;
+        houseTop = boardY + boardSize + (boardSize * 0.048);
+    } else {
+        houseLeft = (boardX + boardSize - yardWidth) - gap - houseW;
+        houseTop = boardY + (-0.095 * boardSize) - (houseH / 2);
+    }
+
+    // Responsive die sizing
+    const dieSize = houseW * 0.43;
+    const diePaddingX = houseW * 0.043;
+    const diePaddingY = houseH * 0.12;
+    const dieGap = houseW * 0.06;
+    const pipRadius = dieSize * 0.09;
+
+    const d0Left = houseLeft + diePaddingX;
+    const d1Left = houseLeft + diePaddingX + dieSize + dieGap;
+    const dTop   = houseTop + diePaddingY;
 
     return (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
             {/* House background */}
-            <View style={[styles.house, { left: houseLeft, top: houseTop }]} />
+            <View style={[styles.house, { left: houseLeft, top: houseTop, width: houseW, height: houseH }]} />
 
             {/* Die 0 */}
             {show0 && (
-                <View style={[styles.dieContainer, { left: d0Left, top: dTop }]}>
+                <View style={[styles.dieContainer, { left: d0Left, top: dTop, width: dieSize, height: dieSize }]}>
                     <AnimatedDie
                         faceValue={anim.face0}
                         bounce={anim.bounce}
                         rotation={anim.rotation}
                         scale={anim.scale}
                         isUsed={!isRolling && (diceUsed[0] ?? false)}
+                        dieSize={dieSize}
+                        pipRadius={pipRadius}
                     />
                 </View>
             )}
 
             {/* Die 1 */}
             {show1 && (
-                <View style={[styles.dieContainer, { left: d1Left, top: dTop }]}>
+                <View style={[styles.dieContainer, { left: d1Left, top: dTop, width: dieSize, height: dieSize }]}>
                     <AnimatedDie
                         faceValue={anim.face1}
                         bounce={anim.bounce}
                         rotation={anim.rotation}
                         scale={anim.scale}
                         isUsed={!isRolling && (diceUsed[1] ?? false)}
+                        dieSize={dieSize}
+                        pipRadius={pipRadius}
                     />
                 </View>
             )}
@@ -182,8 +230,6 @@ export const LudoDiceOverlay: React.FC<LudoDiceOverlayProps> = ({
 const styles = StyleSheet.create({
     house: {
         position: 'absolute',
-        width: HOUSE_W,
-        height: HOUSE_H,
         borderRadius: 15,
         backgroundColor: 'rgba(255,255,255,0.10)',
         borderWidth: 1,
@@ -191,22 +237,14 @@ const styles = StyleSheet.create({
     },
     dieContainer: {
         position: 'absolute',
-        width: DIE_SIZE,
-        height: DIE_SIZE,
     },
     die: {
-        width: DIE_SIZE - 1,
-        height: DIE_SIZE - 1,
-        borderRadius: CORNER_RADIUS,
         overflow: 'hidden',
     },
     dieShadow: {
         position: 'absolute',
         left: 1,
         top: 4,
-        width: DIE_SIZE - 3,
-        height: DIE_SIZE - 3,
-        borderRadius: CORNER_RADIUS,
         backgroundColor: 'rgba(0,0,0,0.35)',
     },
 });

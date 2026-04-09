@@ -389,7 +389,7 @@ const LudoOnline = () => {
                        // Server wins any disagreements
                        newBoard.waitingForRoll = data.waitingForRoll;
                        newBoard.currentPlayerIndex = data.currentPlayerIndex;
-                       newBoard.diceUsed = data.diceUsed;
+                       if (data.diceUsed !== undefined) newBoard.diceUsed = data.diceUsed;
                        newBoard.stateVersion = data.stateVersion;
                        
                        // Sync lastProcessedMoveId so optimistic state can clear
@@ -426,7 +426,7 @@ const LudoOnline = () => {
                 } else if (data.type === 'PASS_TURN') {
                     newBoard.waitingForRoll = data.waitingForRoll;
                     newBoard.currentPlayerIndex = data.currentPlayerIndex;
-                    newBoard.diceUsed = data.diceUsed;
+                    if (data.diceUsed !== undefined) newBoard.diceUsed = data.diceUsed;
                     newBoard.dice = [];
                     newBoard.stateVersion = data.stateVersion;
                     
@@ -483,6 +483,13 @@ const LudoOnline = () => {
             // 4. Listen for game ended (forfeit, normal win)
             const unsubscribeEnded = socketService.onGameEnded((data: any) => {
                 const latestGame = currentGameRef.current;
+                
+                if (data?.reason === 'rage_quit') {
+                    Alert.alert('Out of Rage Quit', 'The player was inactive for too long and has automatically forfeited.');
+                } else if (data?.reason === 'forfeit') {
+                    Alert.alert('Match Forfeited', 'The opponent has surrendered.');
+                }
+
                 if (data?.winnerId && latestGame) {
                     // Immediately block polling/socket updates
                     gameOverProcessedRef.current = true;
@@ -726,6 +733,7 @@ const LudoOnline = () => {
         const moveWithId = { ...move, moveId: actionId };
 
         try {
+            if (!currentGameRef.current) return;
             // PREDICTION LAYER
             // CRITICAL FIX: NEVER predict upon the SWAPPED visualGameState. Use pristine server string.
             const rawCurrentBoard = typeof currentGameRef.current.board === 'string' ? JSON.parse(currentGameRef.current.board) : currentGameRef.current.board;
@@ -741,15 +749,12 @@ const LudoOnline = () => {
 
             socketService.emitAction(currentGame.id, 'ludo', { type: 'MOVE_PIECE', move: moveWithId, moveId: actionId, expectedStateVersion: visualGameState.stateVersion });
             
-            // Failsafe: If the server silently ignores the move (e.g., turn timeout race condition)
-            // or the network drops the packet, we must unlock the UI eventually.
+            // Release animation lock shortly after prediction is dispatched.
+            // The optimistic state is already applied — we only need to prevent
+            // rapid double-taps on the same render cycle (300ms debounce).
             setTimeout(() => {
-                if (animationLockRef.current) {
-                    console.log("[LudoSync] Failsafe: Releasing stuck animation lock");
-                    animationLockRef.current = false;
-                    setPendingSeedIndices(prev => prev.filter(id => id !== move.seedIndex));
-                }
-            }, 5000); // 5s should be way more than enough for a server ping
+                animationLockRef.current = false;
+            }, 300);
 
         } catch (error) {
             animationLockRef.current = false;
