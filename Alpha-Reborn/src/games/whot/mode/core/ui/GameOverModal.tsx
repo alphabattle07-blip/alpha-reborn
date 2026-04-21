@@ -4,7 +4,8 @@ import Animated, { FadeIn, BounceIn, FadeOut } from "react-native-reanimated";
 import { Player, WHOT_LEVELS as levels, ComputerLevel } from "../types";
 import { Ionicons } from '@expo/vector-icons';
 import { useAppDispatch } from "../../../../../store/hooks";
-import { updateGameStatsThunk } from "../../../../../store/thunks/gameStatsThunks";
+import { updateGameStatsThunk, fetchAllGameStatsThunk } from "../../../../../store/thunks/gameStatsThunks";
+import { fetchUserProfile } from "../../../../../store/slices/authSlice";
 
 
 const BATTLE_BONUS = 15;
@@ -97,15 +98,25 @@ const GameOverModal = ({
         });
 
         // Dispatch to backend ONLY ONCE per game-over instance
+        // We only dispatch client-side for offline/computer matches.
         if (!hasDispatchedReward.current && (isWin || isLoss || isDraw)) {
           hasDispatchedReward.current = true;
-          dispatch(
-            updateGameStatsThunk({
-              gameId: 'whot',
-              result: result,
-              newRating: finalRating,
-            })
-          );
+          
+          if (!isOnline) {
+            dispatch(
+              updateGameStatsThunk({
+                gameId: 'whot',
+                result: result,
+                newRating: finalRating,
+              })
+            );
+          } else {
+            // For online, the server already processed the match rewards authoritatively.
+            // We just need to aggressively refresh our local profile and global stats map 
+            // so the next match (and Profile screen) shows the NEW rating!
+            dispatch(fetchUserProfile(undefined));
+            dispatch(fetchAllGameStatsThunk());
+          }
         }
 
         onStatsUpdate?.(result, finalRating);

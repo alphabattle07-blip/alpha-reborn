@@ -22,7 +22,7 @@ interface MatchChatOverlayProps {
     matchId: string;
 }
 
-export const MatchChatOverlay: React.FC<MatchChatOverlayProps> = ({ matchId }) => {
+export const MatchChatOverlay: React.FC<MatchChatOverlayProps> = React.memo(({ matchId }) => {
     const dispatch = useAppDispatch();
     const { messages, isChatVisible } = useAppSelector(state => state.chat);
     const { profile } = useAppSelector(state => state.user);
@@ -200,7 +200,7 @@ export const MatchChatOverlay: React.FC<MatchChatOverlayProps> = ({ matchId }) =
             </View>
         </Modal>
     );
-};
+});
 
 const styles = StyleSheet.create({
     overlayContainer: {

@@ -133,10 +133,12 @@ export default function ProfileScreen({ isOwnProfile: propIsOwnProfile }: Profil
   const profileEmbeddedStats = playerToShow?.gameStats || [];
 
   const statsToRender = DEFAULT_GAMES.map(game => {
-    // 1. Try Redux Slice
-    let existingStat = gameStatsArray.find(stat => stat.gameId === game.id);
+    // 1. If viewing own profile, try Redux Slice first.
+    let existingStat = isOwnProfile 
+      ? gameStatsArray.find(stat => stat.gameId === game.id) 
+      : undefined;
 
-    // 2. If missing, try Profile Embedded Stats (mapped to match interface)
+    // 2. If missing (or viewing someone else), fallback to Profile Embedded Stats
     if (!existingStat) {
       const embedded = profileEmbeddedStats.find(s => s.gameId === game.id);
       if (embedded) {

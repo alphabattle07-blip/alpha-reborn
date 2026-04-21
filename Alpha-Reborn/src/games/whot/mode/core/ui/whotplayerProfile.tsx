@@ -275,5 +275,4 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
 });
-
-export default WhotPlayerProfile;
+export default React.memo(WhotPlayerProfile);

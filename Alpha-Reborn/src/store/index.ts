@@ -10,7 +10,7 @@ import onlineGameReducer from './slices/onlineGameSlice';
 import soundSettingsReducer from './slices/soundSettingsSlice';
 import chatReducer from './slices/chatSlice';
 
-const rootReducer = combineReducers({
+const appReducer = combineReducers({
   user: userReducer,
   auth: authReducer,
   gameStats: gameStatsReducer,
@@ -18,6 +18,15 @@ const rootReducer = combineReducers({
   soundSettings: soundSettingsReducer,
   chat: chatReducer,
 });
+
+const rootReducer = (state: ReturnType<typeof appReducer> | undefined, action: any) => {
+  if (action.type === 'auth/logout') {
+    // Preserve only soundSettings
+    const { soundSettings } = state || {};
+    state = { soundSettings } as any; // Cast as any because we are setting other slices to undefined to cause them to reset
+  }
+  return appReducer(state, action);
+};
 
 const persistConfig = {
   key: 'root',

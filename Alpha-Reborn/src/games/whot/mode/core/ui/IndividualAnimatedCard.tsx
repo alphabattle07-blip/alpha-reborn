@@ -161,6 +161,7 @@ const IndividualAnimatedCard = memo(
         options?: any;
         instant?: boolean;
         timestamp: number;
+        hasExplicitTimestamp?: boolean;
       } | null>(null);
 
       // ⚡ IMMEDIATE REACTION (No tick throttling)
@@ -206,7 +207,8 @@ const IndividualAnimatedCard = memo(
             const MIN_DURATION = 150;
 
             let adjustedDuration = BASELINE_DURATION;
-            if (val.timestamp) {
+            // Only apply latency compensation if an explicit server timestamp was provided
+            if (val.hasExplicitTimestamp && val.timestamp) {
               const lag = Date.now() - val.timestamp;
               if (lag > 0) {
                 adjustedDuration = Math.max(MIN_DURATION, BASELINE_DURATION - lag);
@@ -255,13 +257,13 @@ const IndividualAnimatedCard = memo(
       // --- Imperative Handle (for parent control) ---
       useImperativeHandle(ref, () => ({
         teleportTo(target, options, timestamp) {
-          targetSV.value = { target, options, instant: true, timestamp: timestamp || Date.now() };
+          targetSV.value = { target, options, instant: true, timestamp: timestamp || Date.now(), hasExplicitTimestamp: !!timestamp };
         },
 
         async dealTo(target, options, instant, timestamp) {
           return new Promise((resolve) => {
-            targetSV.value = { target, options, instant, timestamp: timestamp || Date.now() };
-            setTimeout(resolve, instant ? 0 : 500);
+            targetSV.value = { target, options, instant, timestamp: timestamp || Date.now(), hasExplicitTimestamp: !!timestamp };
+            setTimeout(resolve, instant ? 50 : 450);
           });
         },
 

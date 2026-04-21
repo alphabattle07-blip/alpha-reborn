@@ -132,17 +132,21 @@ export function useWhotSoundEffects(gameState: GameState | null) {
             return;
         }
 
-        // Debug: log state diffs
-        console.log('🔊 [WhotSFX] State diff:', {
-            pileChanged: curr.topPileCardId !== prev.topPileCardId,
-            newTopCard: curr.topPileCardId,
-            prevPending: prev.pendingActionType,
-            currPending: curr.pendingActionType,
-            prevSuit: prev.calledSuit,
-            currSuit: curr.calledSuit,
-            prevHands: prev.handSizes,
-            currHands: curr.handSizes,
-        });
+        // Debug: log state diffs only when something actually changed
+        const pileChanged = curr.topPileCardId !== prev.topPileCardId;
+        const handsChanged = JSON.stringify(curr.handSizes) !== JSON.stringify(prev.handSizes);
+        const pendingChanged = curr.pendingActionType !== prev.pendingActionType;
+        const suitChanged = curr.calledSuit !== prev.calledSuit;
+        if (pileChanged || handsChanged || pendingChanged || suitChanged) {
+            console.log('🔊 [WhotSFX] State changed:', {
+                pileChanged,
+                newTopCard: curr.topPileCardId,
+                prevHands: prev.handSizes,
+                currHands: curr.handSizes,
+                currPending: curr.pendingActionType,
+                currSuit: curr.calledSuit,
+            });
+        }
 
         // --- 1. Card Played / Placed on Pile ---
         if (curr.topPileCardId && curr.topPileCardId !== prev.topPileCardId) {

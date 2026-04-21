@@ -474,7 +474,6 @@ export default React.memo(WhotCoreUI, (prev, next) => {
     if (prev.isLandscape !== next.isLandscape) return false;
 
     // 2. High-Level Game Flags
-    if (prev.isAnimating !== next.isAnimating) return false;
     if (prev.showSuitSelector !== next.showSuitSelector) return false;
     if (prev.marketCardCount !== next.marketCardCount) return false;
     if (prev.activeCalledSuit !== next.activeCalledSuit) return false;
@@ -483,12 +482,16 @@ export default React.memo(WhotCoreUI, (prev, next) => {
     // 3. Game Over State
     if (prev.gameOver !== next.gameOver) return false;
 
-    // 4. IGNORE unstable object props:
-    // - game
-    // - playerState
-    // - opponentState
-    // - onCardPress (should be stable ref, but even if not, we rely on AnimatedCardList reading it properly)
-    // - allCards (AnimatedCardList checks card IDs internally)
+    // 4. Turn & Timer — MUST re-render when turn changes so the timer ring switches player
+    if (prev.playerState.isCurrentPlayer !== next.playerState.isCurrentPlayer) return false;
+    if (prev.opponentState.isCurrentPlayer !== next.opponentState.isCurrentPlayer) return false;
+    if (prev.turnStartTime !== next.turnStartTime) return false;
+    if (prev.warningYellowAt !== next.warningYellowAt) return false;
+    if (prev.warningRedAt !== next.warningRedAt) return false;
+
+    // 5. Hand counts — must re-render when card count changes for badge display
+    if (prev.playerState.handLength !== next.playerState.handLength) return false;
+    if (prev.opponentState.handLength !== next.opponentState.handLength) return false;
 
     return true; // Props relevant to LAYOUT are identical.
 });

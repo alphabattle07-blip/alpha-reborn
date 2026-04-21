@@ -5,7 +5,7 @@ import { ChatToggleButton } from './ChatToggleButton';
 import { useAppSelector } from '../../store/hooks';
 import { getRankFromRating } from '../../utils/rank';
 
-export const MatchActionButtons = () => {
+export const MatchActionButtons = React.memo(() => {
     const { profile } = useAppSelector(state => state.user);
     const [isPanelOpen, setIsPanelOpen] = useState(false);
     const slideAnim = useRef(new Animated.Value(0)).current;
@@ -73,7 +73,7 @@ export const MatchActionButtons = () => {
             </View>
         </View>
     );
-};
+});
 
 const styles = StyleSheet.create({
     container: {
