@@ -21,6 +21,7 @@ interface GameOverModalProps {
   playerRating: number;
   result: 'win' | 'loss' | 'draw';
   isOnline?: boolean;
+  reason?: string;
   children?: React.ReactNode;
   onStatsUpdate?: (result: 'win' | 'loss' | 'draw', newRating: number) => void;
 }
@@ -36,6 +37,7 @@ const GameOverModal = ({
   playerRating,
   result,
   isOnline,
+  reason,
   children,
   onStatsUpdate,
 }: GameOverModalProps) => {
@@ -184,6 +186,10 @@ const GameOverModal = ({
               : `Winner: ${isWin ? playerName : opponentName}`}
           </Text>
 
+          {reason && (
+            <Text style={styles.reasonText}>{reason}</Text>
+          )}
+
           {/* 4. Rewards Section */}
           {(isWin || isDraw || isOnline) && (
             <View style={styles.rewardSection}>
@@ -287,6 +293,13 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginVertical: 10,
     textAlign: 'center',
+  },
+  reasonText: {
+    fontSize: 14,
+    color: '#AAAAAA',
+    textAlign: 'center',
+    marginBottom: 20,
+    fontStyle: 'italic',
   },
 
   rewardSection: {

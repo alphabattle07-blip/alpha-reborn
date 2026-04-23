@@ -1,88 +1,116 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
+import { Canvas, Path, Skia, BlurMask } from '@shopify/react-native-skia';
+import { useSharedValue, useDerivedValue, withTiming, Easing, cancelAnimation } from 'react-native-reanimated';
 
 interface WhotTimerRingProps {
     isActive: boolean;
     turnStartTime?: number;
     turnDuration?: number;
-    warningYellowAt?: number;
-    warningRedAt?: number;
+    warningYellowAt?: number; // Kept for interface compatibility but ignored in logic
+    warningRedAt?: number; // Kept for interface compatibility but ignored in logic
     serverTimeOffset?: number; // local time - server time
     size?: number;
     strokeWidth?: number;
 }
 
 /**
- * A simple timer ring implemented using View borders.
- * Changes border color based on warning thresholds.
- * No external SVG dependency required.
+ * An animated timer ring implemented using Skia.
+ * Starts at 30 seconds green, gradually reduces, turns red at 5 seconds.
  */
 export const WhotTimerRing: React.FC<WhotTimerRingProps> = ({
     isActive,
     turnStartTime = 0,
-    turnDuration = 30000,
-    warningYellowAt = 0,
-    warningRedAt = 0,
+    turnDuration = 15000,
     serverTimeOffset = 0,
     size = 72,
     strokeWidth = 4,
 }) => {
-    const [currentColor, setCurrentColor] = useState('#00FF00'); // Default Green
-    const [opacity, setOpacity] = useState(1);
-    const colorIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // 1 to 0 for a reducing circle
+    const progress = useSharedValue(1);
+    const isRed = useSharedValue(false);
 
     useEffect(() => {
         if (!isActive || !turnStartTime || !turnDuration) {
-            setCurrentColor('#555555'); // Inactive color
-            setOpacity(0.3);
-            if (colorIntervalRef.current) clearInterval(colorIntervalRef.current);
+            cancelAnimation(progress);
+            progress.value = 1;
+            isRed.value = false;
             return;
         }
 
-        setOpacity(1);
+        const currentServerTime = Date.now() - serverTimeOffset;
+        const elapsed = currentServerTime - turnStartTime;
+        const remaining = turnDuration - elapsed;
 
-        // Set up a JS interval to check warning thresholds (200ms resolution) 
-        colorIntervalRef.current = setInterval(() => {
-            const currentServerTime = Date.now() - serverTimeOffset;
-            const elapsed = currentServerTime - turnStartTime;
-            const remaining = turnDuration - elapsed;
+        if (remaining <= 0) {
+            cancelAnimation(progress);
+            progress.value = 0;
+            isRed.value = true;
+            return;
+        }
 
-            if (remaining <= 0) {
-                setCurrentColor('#FF0000'); // Expired
-                setOpacity(0.5);
-                return;
-            }
+        const initialProgress = remaining / turnDuration;
+        progress.value = initialProgress;
+        isRed.value = remaining <= 5000;
 
-            if (warningRedAt > 0 && currentServerTime >= warningRedAt) {
-                setCurrentColor('#FF0000'); // Red
-            } else if (warningYellowAt > 0 && currentServerTime >= warningYellowAt) {
-                setCurrentColor('#FFD700'); // Yellow  
-            } else {
-                setCurrentColor('#00FF00'); // Green
-            }
-        }, 200);
+        // Set up exact timing to turn red at 5s remaining
+        const timeUntilRed = remaining - 5000;
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+        if (timeUntilRed > 0) {
+            timeoutId = setTimeout(() => {
+                isRed.value = true;
+            }, timeUntilRed);
+        }
+
+        progress.value = withTiming(0, {
+            duration: remaining,
+            easing: Easing.linear
+        });
 
         return () => {
-            if (colorIntervalRef.current) clearInterval(colorIntervalRef.current);
+            if (timeoutId) clearTimeout(timeoutId);
         };
-    }, [isActive, turnStartTime, turnDuration, warningYellowAt, warningRedAt, serverTimeOffset]);
+    }, [isActive, turnStartTime, turnDuration, serverTimeOffset, progress, isRed]);
+
+    const strokeColor = useDerivedValue(() => {
+        return isRed.value ? '#FF0000' : '#00FF00';
+    });
 
     if (!isActive) return null;
 
+    // Create the circle path
+    const radius = (size - strokeWidth) / 2;
+    
+    // Create a path for a circle starting from the top (-90 degrees) and sweeping 360 degrees
+    const path = Skia.Path.Make();
+    path.addArc({ x: strokeWidth / 2, y: strokeWidth / 2, width: radius * 2, height: radius * 2 }, -90, 360);
+
     return (
-        <View
-            style={[
-                styles.container,
-                {
-                    width: size,
-                    height: size,
-                    borderRadius: size / 2,
-                    borderWidth: strokeWidth,
-                    borderColor: currentColor,
-                    opacity,
-                },
-            ]}
-        />
+        <View style={[styles.container, { width: size, height: size }]}>
+            <Canvas style={{ width: size, height: size }}>
+                {/* Background Track (lightly visible so progress bounds are clear) */}
+                <Path
+                    path={path}
+                    style="stroke"
+                    strokeWidth={strokeWidth}
+                    color="rgba(255, 255, 255, 0.1)"
+                />
+                
+                {/* Active Progress Ring with a glowing blur mask */}
+                <Path
+                    path={path}
+                    style="stroke"
+                    strokeWidth={strokeWidth}
+                    color={strokeColor}
+                    strokeCap="round"
+                    start={0}
+                    end={progress}
+                >
+                    <BlurMask blur={3} style="solid" />
+                </Path>
+            </Canvas>
+        </View>
     );
 };
 

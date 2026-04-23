@@ -1,4 +1,4 @@
-import { CARD_WIDTH, CARD_HEIGHT } from "./ui/whotConfig";
+import { CARD_WIDTH, CARD_HEIGHT, PORTRAIT_PLAYER_BOTTOM_MARGIN, PORTRAIT_COMPUTER_TOP_MARGIN, HAND_CONTAINER_HEIGHT, PORTRAIT_COMPUTER_HAND_LEFT_MARGIN } from "./ui/whotConfig";
 
 type Target = "player" | "computer" | "pile" | "market";
 interface CoordsOptions {
@@ -47,13 +47,13 @@ export const getCoords = (
 
     // --- COMPUTER (Top Hand) ---
     case "computer": {
-      const boxTopMargin = isLandscape ? 10 : 20;
-      const boxHeight = CARD_HEIGHT + 10;
+      const boxTopMargin = isLandscape ? 10 : PORTRAIT_COMPUTER_TOP_MARGIN;
+      const boxHeight = isLandscape ? (CARD_HEIGHT + 10) : HAND_CONTAINER_HEIGHT;
 
       // Correct Y for each orientation
       const y = isLandscape
         ? boxTopMargin + boxHeight / 2.1 // landscape
-        : boxTopMargin + boxHeight / 1.5; // portrait
+        : PORTRAIT_COMPUTER_TOP_MARGIN + HAND_CONTAINER_HEIGHT / 2; // portrait
 
       const maxCardsBeforeSqueeze = 6;
 
@@ -85,8 +85,8 @@ export const getCoords = (
         // --- FIXED PORTRAIT LOGIC ---
 
         // 1. Define a fixed starting point on the left (Fixed 0 Index)
-        // UPDATED: Fixed margin as requested
-        const startMargin = 110;
+        // UPDATED: Use shared constant for responsiveness
+        const startMargin = PORTRAIT_COMPUTER_HAND_LEFT_MARGIN;
 
         // 2. Define the maximum width available before squeezing
         // We leave a matching margin on the right side to keep it balanced visually
@@ -118,9 +118,11 @@ export const getCoords = (
 
     // --- PLAYER (Bottom Hand) ---
     case "player": {
-      const boxBottomMargin = isLandscape ? 10 : 20;
-      const boxHeight = CARD_HEIGHT + 10;
-      const y = screenHeight - boxBottomMargin - boxHeight / 1.4; // height of the card in landscape
+      const boxBottomMargin = isLandscape ? 10 : PORTRAIT_PLAYER_BOTTOM_MARGIN;
+      const boxHeight = isLandscape ? (CARD_HEIGHT + 10) : HAND_CONTAINER_HEIGHT;
+      const y = isLandscape
+        ? screenHeight - boxBottomMargin - boxHeight / 1.4 // height of the card in landscape
+        : screenHeight - PORTRAIT_PLAYER_BOTTOM_MARGIN - HAND_CONTAINER_HEIGHT / 2; // portrait center
 
       const maxPlayerCards = 6;
 

@@ -20,6 +20,7 @@ export interface OnlineGameState {
     board: any;
     currentTurn: string;
     winnerId: string | null;
+    reason?: string;
   } | null;
   availableGames: Array<{
     id: string;

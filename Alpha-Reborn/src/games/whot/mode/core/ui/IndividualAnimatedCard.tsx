@@ -247,6 +247,19 @@ const IndividualAnimatedCard = memo(
         onPressRef.current = onPress;
       }, [onPress]);
 
+      // 🔄 Sync with Layout Changes (Fixes "shooting" cards)
+      // If the card is still in the market (targetSV is null) and the market 
+      // position changes (due to onLayout measuring the screen), update 
+      // the shared values immediately so the next animation starts from 
+      // the correct location.
+      useEffect(() => {
+        if (!targetSV.value) {
+          x.value = marketPos.x - CARD_WIDTH / 2;
+          y.value = marketPos.y - CARD_HEIGHT / 2;
+        }
+      }, [marketPos, x, y, targetSV]);
+
+
       // Stable callback that worklet can safely call via runOnJS
       const handleCardPress = useMemo(() => (cardData: Card) => {
         if (onPressRef.current) {

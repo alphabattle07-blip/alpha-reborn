@@ -10,7 +10,7 @@ import ActiveSuitCard from './ActiveSuitCard';
 import { MarketPile } from './MarketPile';
 import WhotPlayerProfile from './whotplayerProfile';
 import ComputerUI from '../../computer/whotComputerUI';
-import { CARD_HEIGHT } from './whotConfig';
+import { CARD_HEIGHT, PORTRAIT_PLAYER_BOTTOM_MARGIN, PORTRAIT_COMPUTER_TOP_MARGIN, HAND_CONTAINER_HEIGHT, PORTRAIT_COMPUTER_HAND_LEFT_MARGIN, PORTRAIT_OPPONENT_PROFILE_TOP, PORTRAIT_COMPUTER_CONTAINER_LEFT } from './whotConfig';
 import { getCoords } from '../coordinateHelper';
 import GameOverModal from './GameOverModal';
 import QuickMuteButton from '../../../../../components/QuickMuteButton';
@@ -76,6 +76,7 @@ export type WhotCoreUIProps = {
         playerRating: number;
         result: 'win' | 'loss' | 'draw';
         isOnline?: boolean;
+        reason?: string;
     } | null;
 };
 
@@ -114,6 +115,15 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
     gameOver
 }) => {
     // 💓 GAME HEARTBEAT (30Hz)
+    const [measuredHeight, setMeasuredHeight] = React.useState(stableHeight);
+    const [measuredWidth, setMeasuredWidth] = React.useState(stableWidth);
+
+    const handleLayout = React.useCallback((event: any) => {
+        const { width: w, height: h } = event.nativeEvent.layout;
+        setMeasuredWidth(w);
+        setMeasuredHeight(h);
+    }, []);
+
     const gameTickSV = useSharedValue(0);
     const lastTickTimeRef = useRef(0);
 
@@ -159,8 +169,9 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
     }, [game?.gameState?.currentPlayer]);
 
     const pileCoords = useMemo(() => {
-        return getCoords("pile", { cardIndex: 0 }, stableWidth, stableHeight);
-    }, [stableWidth, stableHeight]);
+        return getCoords("pile", { cardIndex: 0 }, measuredWidth, measuredHeight);
+    }, [measuredWidth, measuredHeight]);
+
 
     const playerHandStyle = useMemo(
         () => [
@@ -192,7 +203,8 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
     }
 
     return (
-        <View style={styles.container}>
+        <View style={styles.container} onLayout={handleLayout}>
+
             {game && (
                 <View style={styles.computerUIContainer} pointerEvents="box-none">
                     {opponentState.isAI ? (
@@ -245,7 +257,8 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                 </View>
             )}
 
-            <MemoizedBackground width={stableWidth} height={stableHeight} />
+            <MemoizedBackground width={measuredWidth} height={measuredHeight} />
+
             <View style={computerHandStyle} />
 
             {game?.gameState.marketExhausted && (
@@ -292,10 +305,11 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                     count={marketCardCount}
                     font={stableWhotFont}
                     smallFont={stableFont}
-                    width={stableWidth}
-                    height={stableHeight}
+                    width={measuredWidth}
+                    height={measuredHeight}
                     onPress={onPickFromMarket}
                 />
+
             )}
 
             {allCards.length > 0 && (
@@ -306,10 +320,11 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                     playerHandIdsSV={playerHandIdsSV}
                     font={stableFont}
                     whotFont={stableWhotFont}
-                    width={stableWidth}
-                    height={stableHeight}
+                    width={measuredWidth}
+                    height={measuredHeight}
                     onCardPress={onCardPress}
                     onReady={onCardListReady}
+
                     gameTickSV={gameTickSV}
                     isMyTurnSV={isMyTurnSV}
                     lastCardOnPileSV={lastCardOnPileSV}
@@ -334,10 +349,11 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
             <WhotSuitSelector
                 isVisible={showSuitSelector}
                 onSelectSuit={onSuitSelect}
-                width={stableWidth}
-                height={stableHeight}
+                width={measuredWidth}
+                height={measuredHeight}
                 font={stableFont}
             />
+
 
             {gameOver && (
                 <GameOverModal
@@ -351,6 +367,7 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                     playerRating={gameOver.playerRating}
                     result={gameOver.result}
                     isOnline={gameOver.isOnline}
+                    reason={gameOver.reason}
                 />
             )}
 
@@ -367,9 +384,11 @@ const styles = StyleSheet.create({
     loadingTitle: { color: '#FFD700', fontSize: 18, marginTop: 10 },
     computerUIContainer: {
         position: "absolute",
-        top: 50,
-        left: 15,
-        alignSelf: "flex-start",
+        top: PORTRAIT_OPPONENT_PROFILE_TOP,
+        left: 0,
+        width: PORTRAIT_COMPUTER_CONTAINER_LEFT,
+        justifyContent: "center",
+        alignItems: "center",
         zIndex: 10,
     },
     playerUIContainer: {
@@ -391,13 +410,13 @@ const styles = StyleSheet.create({
         backgroundColor: "rgba(0, 0, 0, 0.2)",
         borderTopLeftRadius: 20,
         zIndex: 0,
-        height: CARD_HEIGHT + 10,
+        height: HAND_CONTAINER_HEIGHT,
         overflow: "hidden",
         justifyContent: "center",
         alignItems: "center",
     },
-    playerHandContainerPortrait: { bottom: "13.5%", left: "3%", right: 85, width: "auto" },
-    computerHandContainerPortrait: { top: 40, left: "26%", right: "5%", width: "auto" },
+    playerHandContainerPortrait: { bottom: PORTRAIT_PLAYER_BOTTOM_MARGIN, left: "3%", right: 85, width: "auto" },
+    computerHandContainerPortrait: { top: PORTRAIT_COMPUTER_TOP_MARGIN, left: PORTRAIT_COMPUTER_CONTAINER_LEFT, right: "5%", width: "auto" },
     playerHandContainerLandscape: { bottom: 8, left: "21%", right: "21%", width: "auto" },
     computerHandContainerLandscape: { top: 8, left: "24%", right: "24%", width: "auto" },
     pagingContainer: {
@@ -405,16 +424,16 @@ const styles = StyleSheet.create({
         zIndex: 100,
         left: 0,
         right: 0,
-        height: CARD_HEIGHT + 10,
+        height: HAND_CONTAINER_HEIGHT,
         pointerEvents: "box-none",
     },
-    pagingContainerPortrait: { bottom: "13.5%", right: 0, width: 85, left: 'auto' },
+    pagingContainerPortrait: { bottom: PORTRAIT_PLAYER_BOTTOM_MARGIN, right: 0, width: 85, left: 'auto' },
     pagingContainerLandscape: { bottom: 8, width: "90%" },
     pagingButtonBase: {
         position: "absolute",
         right: 0,
         width: "100%",
-        height: CARD_HEIGHT + 10,
+        height: HAND_CONTAINER_HEIGHT,
         backgroundColor: "#FFD700",
         borderTopRightRadius: 20,
         borderBottomRightRadius: 20,

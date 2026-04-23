@@ -186,6 +186,7 @@ class SocketService {
                     });
                     break;
 
+                case 'GAME_FORFEIT':
                 case 'GAME_ENDED':
                     this.emitLocal('gameEnded', payload);
                     break;

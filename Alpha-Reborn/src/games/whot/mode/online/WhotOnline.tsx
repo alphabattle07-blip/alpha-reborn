@@ -428,10 +428,26 @@ const WhotOnlineUI = () => {
         if (data?.winnerId && currentGame) {
           // Immediately block polling/socket updates
           gameOverProcessedRef.current = true;
+
+          let displayReason = data.message;
+          if (data.loserId) {
+            const isMe = data.loserId === userProfile?.id;
+            if (data.reasonCode === 'TIMEOUT') {
+              displayReason = isMe
+                ? 'You forfeited due to inactivity. ⏱️'
+                : 'Opponent forfeited due to inactivity. 🏆';
+            } else {
+              displayReason = isMe
+                ? 'You forfeited the match.'
+                : 'Opponent forfeited the match.';
+            }
+          }
+
           dispatch(setCurrentGame({
             ...currentGame,
             status: 'COMPLETED',
-            winnerId: data.winnerId
+            winnerId: data.winnerId,
+            reason: displayReason
           }));
         }
       });
@@ -1280,7 +1296,8 @@ const WhotOnlineUI = () => {
           opponentName: opponent?.name || 'Opponent',
           playerRating: getPlayerGameRating(userProfile),
           result: matchResult,
-          isOnline: true
+          isOnline: true,
+          reason: currentGame?.reason
         } : null}
       />
       <MatchActionButtons />
