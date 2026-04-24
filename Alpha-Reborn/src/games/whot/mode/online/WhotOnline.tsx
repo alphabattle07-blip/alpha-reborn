@@ -848,7 +848,7 @@ const WhotOnlineUI = () => {
 
       const dealer = cardListRef.current;
 
-      // Whot card (number 20) → open suit selector, delay emit until suit is chosen
+      // Whot card (number 20) → open suit selector, but emit play immediately
       // Bypass suit selector if it's the player's last card, as they've already won.
       if (card.number === 20 && visualGameState.players[0].hand.length > 1) {
         pendingWhotCardId.current = card.id;
@@ -868,6 +868,15 @@ const WhotOnlineUI = () => {
             ]);
           });
         }
+        
+        // Emit move to server immediately (so opponent sees it)
+        logEmit();
+        socketService.emitMove(currentGame!.id, {
+          type: 'PLAY_CARD',
+          cardId: card.id,
+          timestamp: Date.now()
+        });
+        
         return;
       }
 
@@ -939,9 +948,8 @@ const WhotOnlineUI = () => {
       if (cardId && currentGame?.id) {
         logEmit();
         socketService.emitMove(currentGame.id, {
-          type: 'PLAY_CARD',
-          cardId,
-          calledSuit: suit,
+          type: 'CALL_SUIT',
+          suit: suit,
           timestamp: Date.now()
         });
       }

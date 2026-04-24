@@ -1,4 +1,3 @@
-// src/screens/MarketScreen.tsx
 import React, { useState } from "react";
 import {
   View,
@@ -8,10 +7,13 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  Platform,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
 import { formatCurrency } from "../../../utils/currency";
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Fixed spread rates
 const BUY_RATE = 45; // 45 M = $1 (users buy)
@@ -53,250 +55,373 @@ export default function MarketScreen({ navigation }: any) {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.navigate("Wallet")}
-          style={styles.backBtn}
-        >
-          <Ionicons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
-        <Text style={styles.title}>M-Coin Market</Text>
-        <View style={{ width: 24 }} />
-      </View>
+    <LinearGradient colors={['#0a0e1a', '#101830', '#0a0e1a']} style={styles.root}>
+      <SafeAreaView style={styles.safeArea}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("Wallet")}
+            style={styles.backButton}
+          >
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>EXCHANGE NODE</Text>
+          <View style={{ width: 42 }} />
+        </View>
 
-      {/* Tabs */}
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, tab === "buy" && styles.activeTab]}
-          onPress={() => setTab("buy")}
-        >
-          <Text style={[styles.tabText, tab === "buy" && styles.activeTabText]}>
-            Buy M-Coins
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, tab === "sell" && styles.activeTab]}
-          onPress={() => setTab("sell")}
-        >
-          <Text style={[styles.tabText, tab === "sell" && styles.activeTabText]}>
-            Sell M-Coins
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* BUY */}
-        {tab === "buy" && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Buy M-Coins</Text>
-            <Text style={styles.desc}>
-              Current rate: 45 M = $1 (Buy price)
-            </Text>
-
-            <Text style={styles.label}>Amount in USD ($)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., 20"
-              value={buyAmount}
-              onChangeText={(val) =>
-                /^\d*\.?\d*$/.test(val) && setBuyAmount(val)
-              }
-              keyboardType="numeric"
-            />
-
-            <View style={styles.resultBox}>
-              <Text style={styles.smallText}>You will receive</Text>
-              <Text style={styles.resultText}>
-                {buyMCoinsValue.toLocaleString()} M-Coins
-              </Text>
-              <Text style={styles.smallText}>
-                ≈ {formatCurrency(buyMCoinsValue / BUY_RATE, undefined)}
-              </Text>
-            </View>
-
-            <Text style={styles.label}>Payment Method</Text>
-            <View style={styles.paymentMethods}>
-              <TouchableOpacity
-                style={[
-                  styles.method,
-                  paymentMethod === "card" && styles.methodActive,
-                ]}
-                onPress={() => setPaymentMethod("card")}
-              >
-                <Ionicons
-                  name="card"
-                  size={24}
-                  color={paymentMethod === "card" ? "#fff" : "#000"}
-                />
-                <Text
-                  style={[
-                    styles.methodText,
-                    paymentMethod === "card" && styles.methodTextActive,
-                  ]}
-                >
-                  Card
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.method,
-                  paymentMethod === "crypto" && styles.methodActive,
-                ]}
-                onPress={() => setPaymentMethod("crypto")}
-              >
-                <MaterialCommunityIcons
-                  name="bitcoin"
-                  size={24}
-                  color={paymentMethod === "crypto" ? "#fff" : "#000"}
-                />
-                <Text
-                  style={[
-                    styles.methodText,
-                    paymentMethod === "crypto" && styles.methodTextActive,
-                  ]}
-                >
-                  Crypto
-                </Text>
-              </TouchableOpacity>
-            </View>
-
+        <View style={[styles.mainWrap, { opacity: 0.3 }]}>
+          {/* Tabs */}
+          <View style={styles.tabs}>
             <TouchableOpacity
-              style={[styles.primaryBtn, { opacity: buyAmount ? 1 : 0.5 }]}
-              disabled={!buyAmount}
-              onPress={handleBuy}
+              style={[styles.tab, tab === "buy" && styles.activeTab]}
+              onPress={() => setTab("buy")}
             >
-              <Text style={styles.primaryBtnText}>Proceed to Checkout</Text>
+              <Text style={[styles.tabText, tab === "buy" && styles.activeTabText]}>
+                ACQUIRE (BUY)
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, tab === "sell" && styles.activeTab]}
+              onPress={() => setTab("sell")}
+            >
+              <Text style={[styles.tabText, tab === "sell" && styles.activeTabText]}>
+                LIQUIDATE (SELL)
+              </Text>
             </TouchableOpacity>
           </View>
-        )}
 
-        {/* SELL */}
-        {tab === "sell" && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Sell M-Coins</Text>
-            <Text style={styles.desc}>Current rate: 50 M = $1 (Sell price)</Text>
+          <ScrollView contentContainerStyle={styles.content}>
+            {/* BUY */}
+            {tab === "buy" && (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>MARKET BUY</Text>
+                <Text style={styles.desc}>
+                  Current rate: 45 M = $1 (Global Average)
+                </Text>
 
-            {/* User balance */}
-            <Text style={[styles.label, { marginTop: 0 }]}>Your Balance</Text>
-            <Text style={styles.balance}>{balance.toLocaleString()} M-Coins</Text>
+                <Text style={styles.label}>AMOUNT IN USD ($)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., 25"
+                  placeholderTextColor="#64748b"
+                  value={buyAmount}
+                  onChangeText={(val) =>
+                    /^\d*\.?\d*$/.test(val) && setBuyAmount(val)
+                  }
+                  keyboardType="numeric"
+                />
 
-            <Text style={styles.label}>M-Coins to Sell</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., 500"
-              value={sellAmount}
-              onChangeText={(val) =>
-                /^\d*\.?\d*$/.test(val) && setSellAmount(val)
-              }
-              keyboardType="numeric"
-            />
+                <View style={styles.resultBox}>
+                  <Text style={styles.smallText}>OUTPUT ESTIMATE</Text>
+                  <Text style={styles.resultText}>
+                    {buyMCoinsValue.toLocaleString()} ALPHA COINS
+                  </Text>
+                </View>
 
-            {insufficientBalance && (
-              <Text style={styles.warning}>⚠️ Insufficient balance</Text>
+                <Text style={styles.label}>TRANSFER PROTOCOL</Text>
+                <View style={styles.paymentMethods}>
+                  <TouchableOpacity
+                    style={[
+                      styles.method,
+                      paymentMethod === "card" && styles.methodActive,
+                    ]}
+                  >
+                    <Ionicons
+                      name="card"
+                      size={20}
+                      color={paymentMethod === "card" ? "#fff" : "#94a3b8"}
+                    />
+                    <Text
+                      style={[
+                        styles.methodText,
+                        paymentMethod === "card" && styles.methodTextActive,
+                      ]}
+                    >
+                      SECURE CARD
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.method,
+                      paymentMethod === "crypto" && styles.methodActive,
+                    ]}
+                  >
+                    <MaterialCommunityIcons
+                      name="bitcoin"
+                      size={20}
+                      color={paymentMethod === "crypto" ? "#fff" : "#94a3b8"}
+                    />
+                    <Text
+                      style={[
+                        styles.methodText,
+                        paymentMethod === "crypto" && styles.methodTextActive,
+                      ]}
+                    >
+                      CRYPTO HUB
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { opacity: 0.5 }]}
+                  disabled={true}
+                >
+                  <Text style={styles.primaryBtnText}>EXECUTE PURCHASE</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
-            <View style={styles.resultBox}>
-              <Text style={styles.smallText}>You will receive</Text>
-              <Text style={styles.resultText}>
-                {formatCurrency(sellUsdValue, undefined)}
-              </Text>
-              <Text style={styles.smallText}>
-                ≈ Local currency value
-              </Text>
-            </View>
+            {/* SELL */}
+            {tab === "sell" && (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>MARKET LIQUIDITY</Text>
+                <Text style={styles.desc}>Current rate: 50 M = $1 (Withdraw price)</Text>
 
-            <Text style={styles.label}>Bank Account</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your bank account details"
-            />
+                <View style={styles.balanceSummary}>
+                   <Text style={styles.label}>AVAILABLE LIQUIDITY</Text>
+                   <Text style={styles.balanceVal}>{balance.toLocaleString()} M-Coins</Text>
+                </View>
 
-            <TouchableOpacity
-              style={[
-                styles.primaryBtn,
-                {
-                  backgroundColor: "#dc2626",
-                  opacity: insufficientBalance || !sellAmount ? 0.5 : 1,
-                },
-              ]}
-              disabled={insufficientBalance || !sellAmount}
-              onPress={handleSell}
-            >
-              <Text style={styles.primaryBtnText}>Withdraw Funds</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </ScrollView>
-    </View>
+                <Text style={styles.label}>LIQUIDATE AMOUNT (M)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., 500"
+                  placeholderTextColor="#64748b"
+                  value={sellAmount}
+                  onChangeText={(val) =>
+                    /^\d*\.?\d*$/.test(val) && setSellAmount(val)
+                  }
+                  keyboardType="numeric"
+                />
+
+                <View style={styles.resultBox}>
+                  <Text style={styles.smallText}>RECEIVABLE ESTIMATE</Text>
+                  <Text style={styles.resultText}>
+                    {formatCurrency(sellUsdValue, undefined)}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { backgroundColor: "#ef4444", opacity: 0.5 }]}
+                  disabled={true}
+                >
+                  <Text style={styles.primaryBtnText}>INITIALIZE WITHDRAWAL</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+
+        <View style={styles.comingSoonOverlay}>
+           <View style={styles.blurBox}>
+              <MaterialCommunityIcons name="finance" size={48} color="#FFD700" />
+              <Text style={styles.comingSoonTitle}>MARKET OFFLINE</Text>
+              <Text style={styles.comingSoonSubtitle}>LIQUIDITY POOLS OPENING SOON</Text>
+           </View>
+        </View>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f9fafb" },
+  root: { flex: 1 },
+  safeArea: { flex: 1 },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderColor: "#e5e7eb",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 5 : 15,
+    paddingBottom: 20,
   },
-  backBtn: { marginRight: 12 },
-  title: { flex: 1, textAlign: "center", fontSize: 18, fontWeight: "700" },
+  backButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 2,
+  },
+  mainWrap: {
+    flex: 1,
+  },
   tabs: {
     flexDirection: "row",
-    margin: 12,
-    borderRadius: 8,
-    overflow: "hidden",
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    margin: 20,
+    borderRadius: 16,
+    padding: 4,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: 'rgba(255,255,255,0.08)',
   },
-  tab: { flex: 1, padding: 12, backgroundColor: "#f3f4f6" },
-  activeTab: { backgroundColor: "#2563eb" },
-  tabText: { textAlign: "center", fontWeight: "600" },
-  activeTabText: { color: "#fff" },
-  content: { padding: 16 },
-  card: { backgroundColor: "#fff", borderRadius: 12, padding: 16, elevation: 2 },
-  cardTitle: { fontSize: 20, fontWeight: "700", marginBottom: 6 },
-  desc: { fontSize: 14, color: "#6b7280", marginBottom: 16 },
-  label: { fontWeight: "600", marginBottom: 6, marginTop: 12 },
-  balance: { fontSize: 16, fontWeight: "700", color: "#2563eb" },
-  input: {
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  activeTab: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  tabText: {
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  activeTabText: {
+    color: '#fff',
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingBottom: 30,
+  },
+  card: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 24,
+    padding: 24,
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 8,
-    padding: 10,
-    backgroundColor: "#fff",
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  cardTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  desc: {
+    color: '#64748b',
+    fontSize: 12,
+    marginBottom: 24,
+  },
+  label: {
+    color: '#94a3b8',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginBottom: 8,
+    marginTop: 20,
+  },
+  balanceSummary: {
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    marginBottom: 10,
+  },
+  balanceVal: {
+    color: '#FFD700',
+    fontSize: 24,
+    fontWeight: '900',
+  },
+  input: {
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 14,
+    padding: 16,
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   resultBox: {
-    marginVertical: 12,
-    padding: 12,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 8,
-    alignItems: "center",
+    backgroundColor: 'rgba(255,215,0,0.05)',
+    padding: 20,
+    borderRadius: 20,
+    marginTop: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.1)',
   },
-  smallText: { fontSize: 12, color: "#6b7280" },
-  resultText: { fontSize: 20, fontWeight: "700", color: "#2563eb" },
-  paymentMethods: { flexDirection: "row", gap: 12, marginTop: 8 },
+  smallText: {
+    color: '#64748b',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  resultText: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  paymentMethods: {
+    flexDirection: "row",
+    gap: 12,
+  },
   method: {
     flex: 1,
-    padding: 12,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.02)',
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    alignItems: "center",
+    borderColor: 'rgba(255,255,255,0.05)',
+    alignItems: 'center',
+    gap: 8,
   },
-  methodActive: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
-  methodText: { marginTop: 4, fontWeight: "600" },
-  methodTextActive: { color: "#fff" },
+  methodActive: {
+    backgroundColor: 'rgba(255,215,0,0.1)',
+    borderColor: 'rgba(255,215,0,0.2)',
+  },
+  methodText: {
+    color: '#64748b',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  methodTextActive: {
+    color: '#FFD700',
+  },
   primaryBtn: {
-    marginTop: 20,
-    backgroundColor: "#2563eb",
-    padding: 14,
-    borderRadius: 8,
-    alignItems: "center",
+    marginTop: 30,
+    padding: 18,
+    borderRadius: 18,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
   },
-  primaryBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  warning: { color: "#dc2626", marginTop: 8, fontWeight: "600" },
+  primaryBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  comingSoonOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    pointerEvents: 'none',
+  },
+  blurBox: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 30,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.3)',
+  },
+  comingSoonTitle: {
+    color: '#FFD700',
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 2,
+    marginTop: 15,
+  },
+  comingSoonSubtitle: {
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 5,
+    letterSpacing: 1,
+  },
 });
