@@ -21,6 +21,7 @@ import { useToast } from '../../../../hooks/useToast';
 import { animationLock } from './animationLock';
 import { animationQueue } from './animationQueue';
 import { useWhotSoundEffects } from '../core/useWhotSoundEffects';
+import UpgradePromptModal from '../../../../components/UpgradePromptModal';
 
 // --- ERROR BOUNDARY --
 interface ErrorBoundaryState {
@@ -69,7 +70,7 @@ const WhotOnlineUI = () => {
   const navigation = useNavigation();
   const { currentGame } = useAppSelector(state => state.onlineGame);
   const { profile: userProfile } = useAppSelector(state => state.user);
-  const { isAuthenticated, token } = useAppSelector(state => state.auth);
+  const { isAuthenticated, token, isGuest } = useAppSelector(state => state.auth);
   const { width, height } = useWindowDimensions();
   const { toast } = useToast();
   const isLandscape = width > height;
@@ -112,6 +113,7 @@ const WhotOnlineUI = () => {
   };
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
 
   // --- FONTS ---
   const { font: loadedFont, whotFont: loadedWhotFont, areLoaded } = useWhotFonts();
@@ -217,6 +219,13 @@ const WhotOnlineUI = () => {
     }
 
     if (!hasStartedMatchmaking.current && !currentGame) {
+      // Hard Gate for Warrior+ Guests
+      const playerRating = getPlayerGameRating(userProfile);
+      if (isGuest && playerRating >= 1750) {
+        setShowUpgradePrompt(true);
+        return; // Block matchmaking
+      }
+
       hasStartedMatchmaking.current = true;
       startAutomaticMatchmaking();
     }
@@ -1310,6 +1319,16 @@ const WhotOnlineUI = () => {
       />
       <MatchActionButtons />
       <MatchChatOverlay matchId={currentGame.id} />
+      <UpgradePromptModal
+        visible={showUpgradePrompt}
+        onClose={() => {
+          setShowUpgradePrompt(false);
+          navigation.goBack(); // They must go back if they refuse to upgrade here
+        }}
+        title="Warrior+ Ranked Access"
+        message="You've reached the Warrior+ tier! Please create an account to continue playing competitive matches."
+        isHardGate={true}
+      />
     </View>
   );
 };

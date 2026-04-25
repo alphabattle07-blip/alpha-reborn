@@ -15,16 +15,12 @@ const SplashScreen = () => {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      // ✅ Now we have logic to decide where to go
-      if (isAuthenticated) {
-        navigation.replace("Home"); // User is logged in, go 
-      } else {
-        navigation.replace("Auth"); // User is not logged in, go to the login/signup screens
-      }
+      // Always go home - guest auth happens silently in loadToken
+      navigation.replace("Home");
     }, 3000); // Reduced time to 3 seconds for better UX
 
     return () => clearTimeout(timer);
-  }, [isAuthenticated, navigation]); // Effect depends on authentication status
+  }, [navigation]);
 
   return (
     <View style={styles.container}>

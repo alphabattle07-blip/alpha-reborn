@@ -6,6 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAppDispatch } from "../../../../../store/hooks";
 import { updateGameStatsThunk, fetchAllGameStatsThunk } from "../../../../../store/thunks/gameStatsThunks";
 import { fetchUserProfile } from "../../../../../store/slices/authSlice";
+import UpgradePromptModal from "../../../../../components/UpgradePromptModal";
+import { useAppSelector } from "../../../../../store/hooks";
 
 
 const BATTLE_BONUS = 15;
@@ -54,6 +56,9 @@ const GameOverModal = ({
     bonus: number;
     isOnline?: boolean;
   } | null>(null);
+
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+  const { isGuest } = useAppSelector(state => state.auth);
 
   // Guard: ensure reward dispatch fires exactly ONCE per game-over instance
   const hasDispatchedReward = useRef(false);
@@ -122,6 +127,14 @@ const GameOverModal = ({
         }
 
         onStatsUpdate?.(result, finalRating);
+        
+        // Show upgrade prompt if guest wins
+        if (isWin && isGuest && !hasDispatchedReward.current) {
+          // Add a small delay so they see the win first
+          setTimeout(() => {
+            setShowUpgradePrompt(true);
+          }, 1000);
+        }
       }
     }
   }, [visible, winner, isWin, isLoss, isDraw, level, result, dispatch, calculatedData, isOnline]);
@@ -241,6 +254,13 @@ const GameOverModal = ({
           </View>
         </ScrollView>
       </Animated.View>
+
+      <UpgradePromptModal
+        visible={showUpgradePrompt}
+        onClose={() => setShowUpgradePrompt(false)}
+        title="🔥 You won! Secure your progress."
+        message="Create an account to save your rank, coins, and match history."
+      />
     </Animated.View>
   );
 };

@@ -2,6 +2,8 @@
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
 import * as api from '../../services/api/authService';
 import * as SecureStore from 'expo-secure-store';
+import * as Application from 'expo-application';
+import { Platform } from 'react-native';
 import { RootState } from '../index';
 
 // Thunks
@@ -47,6 +49,64 @@ export const fetchUserProfile = createAsyncThunk(
   }
 );
 
+// Get or generate a stable device ID
+const getDeviceId = async () => {
+  try {
+    if (Platform.OS === 'android') {
+      return Application.androidId || 'unknown_android';
+    } else if (Platform.OS === 'ios') {
+      const id = await Application.getIosIdForVendorAsync();
+      return id || 'unknown_ios';
+    }
+  } catch (e) {
+    console.warn('Could not get device ID', e);
+  }
+  return 'unknown_device';
+};
+
+export const autoGuestLogin = createAsyncThunk(
+  'auth/autoGuest',
+  async (_, { rejectWithValue, dispatch }) => {
+    try {
+      // 1. Recover existing guestId or create new
+      let guestId = await SecureStore.getItemAsync('guestId');
+      if (!guestId) {
+        guestId = `guest_${Math.random().toString(36).substring(2, 8)}`;
+      }
+
+      const deviceId = await getDeviceId();
+      const response = await api.guestLogin(guestId, deviceId);
+      
+      await SecureStore.setItemAsync('token', response.token);
+      await SecureStore.setItemAsync('guestId', guestId);
+      
+      // Dispatch setGuest action directly (we'll add this reducer below)
+      dispatch(authSlice.actions.setGuest(true));
+      
+      return response;
+    } catch (error: any) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const upgradeAccountThunk = createAsyncThunk(
+  'auth/upgrade',
+  async (data: { email: string; password?: string; name?: string; provider?: string }, { getState, rejectWithValue, dispatch }) => {
+    const token = (getState() as RootState).auth.token;
+    if (!token) return rejectWithValue('No token found');
+    try {
+      const response = await api.upgradeAccount(token, data);
+      await SecureStore.setItemAsync('token', response.token);
+      await SecureStore.deleteItemAsync('guestId');
+      dispatch(authSlice.actions.setGuest(false));
+      return response;
+    } catch (error: any) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
 export const loadToken = createAsyncThunk('auth/loadToken', async (_, { dispatch }) => {
   try {
     const token = await SecureStore.getItemAsync('token');
@@ -56,20 +116,32 @@ export const loadToken = createAsyncThunk('auth/loadToken', async (_, { dispatch
       dispatch(authSlice.actions.setToken(token));
 
       // 2. Attempt to fetch the user profile to validate the token
-      await dispatch(fetchUserProfile(undefined)).unwrap();
+      try {
+        const profileResponse = await dispatch(fetchUserProfile(undefined)).unwrap();
+        // Check if user is a guest based on their profile data
+        const isGuest = profileResponse.accountType === 'guest';
+        dispatch(authSlice.actions.setGuest(isGuest));
+        
+      } catch (profileError) {
+        // Token invalid/expired - fallback to auto-guest if we had a guestId
+        console.log('Profile fetch failed with token, falling back to guest auto-login');
+        await dispatch(autoGuestLogin());
+      }
     } else {
-      // No token found, ensure we are logged out
-      dispatch(authSlice.actions.logout());
+      // No token found -> FIRST LAUNCH -> Auto create guest
+      await dispatch(autoGuestLogin());
     }
   } catch (error: any) {
     console.log('Token invalid or expired during load:', error);
-    dispatch(logoutUser());
+    await dispatch(autoGuestLogin()); // Fallback to guest instead of full logout
   }
 });
 
 export const logoutUser = createAsyncThunk('auth/logout', async (_, { dispatch }) => {
   try {
     await SecureStore.deleteItemAsync('token');
+    // NOTE: We do NOT delete guestId here, so if they uninstall/reinstall or log out, 
+    // they can recover their guest account next time.
   } catch (error) {
     console.error('Error deleting token:', error);
   } finally {
@@ -115,6 +187,7 @@ export const updateUserProfileThunk = createAsyncThunk(
 interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
+  isGuest: boolean;
   loading: boolean;
   error: string | null;
 }
@@ -122,9 +195,10 @@ interface AuthState {
 const initialState: AuthState = {
   token: null,
   isAuthenticated: false,
+  isGuest: false,
   loading: false,
   error: null,
-};
+}
 
 const authSlice = createSlice({
   name: 'auth',
@@ -133,11 +207,15 @@ const authSlice = createSlice({
     logout: (state) => {
       state.token = null;
       state.isAuthenticated = false;
+      state.isGuest = false;
     },
     setToken: (state, action: PayloadAction<string>) => {
       state.token = action.payload;
       state.isAuthenticated = true;
     },
+    setGuest: (state, action: PayloadAction<boolean>) => {
+      state.isGuest = action.payload;
+    }
   },
   extraReducers: (builder) => {
     const handlePending = (state: AuthState) => {
@@ -148,12 +226,16 @@ const authSlice = createSlice({
       state.loading = false;
       state.isAuthenticated = true;
       state.token = action.payload.token;
+      // If the response explicitly contains an accountType, we can sync it
+      if (action.payload?.user?.accountType) {
+        state.isGuest = action.payload.user.accountType === 'guest';
+      }
     };
     const handleRejected = (state: AuthState, action: any) => {
       state.loading = false;
       state.error = action.payload as string;
-      state.token = null;
-      state.isAuthenticated = false;
+      // We don't necessarily clear auth state on rejected promises here, 
+      // let logout/loadToken thunks handle token clearing.
     };
 
     builder
@@ -162,9 +244,15 @@ const authSlice = createSlice({
       .addCase(signInUser.rejected, handleRejected)
       .addCase(signUpUser.pending, handlePending)
       .addCase(signUpUser.fulfilled, handleFulfilled)
-      .addCase(signUpUser.rejected, handleRejected);
+      .addCase(signUpUser.rejected, handleRejected)
+      .addCase(autoGuestLogin.pending, handlePending)
+      .addCase(autoGuestLogin.fulfilled, handleFulfilled)
+      .addCase(autoGuestLogin.rejected, handleRejected)
+      .addCase(upgradeAccountThunk.pending, handlePending)
+      .addCase(upgradeAccountThunk.fulfilled, handleFulfilled)
+      .addCase(upgradeAccountThunk.rejected, handleRejected);
   },
 });
 
-export const { logout, setToken } = authSlice.actions;
+export const { logout, setToken, setGuest } = authSlice.actions;
 export default authSlice.reducer;

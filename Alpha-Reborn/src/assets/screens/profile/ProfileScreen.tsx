@@ -47,7 +47,7 @@ export default function ProfileScreen({ isOwnProfile: propIsOwnProfile }: Profil
   const isOwnProfile = propIsOwnProfile ?? (route.params?.userId === undefined);
 
   // --- REDUX STATE ---
-  const { token } = useAppSelector((state) => state.auth);
+  const { token, isGuest } = useAppSelector((state) => state.auth);
   const { profile: reduxProfile, loading: userLoading, error: userError } = useAppSelector((state) => state.user);
 
   // Game Stats from Redux (Slice)
@@ -291,23 +291,7 @@ export default function ProfileScreen({ isOwnProfile: propIsOwnProfile }: Profil
     );
   }
 
-  if (isOwnProfile && !token) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centered}>
-          <Feather name="user" size={64} color="gray" />
-          <Text style={styles.title}>Authentication Required</Text>
-          <Text style={styles.subtitle}>Please sign in to view your profile</Text>
-          <TouchableOpacity
-            style={styles.button}
-            onPress={() => navigation.navigate('Auth', { screen: 'SignIn' } as any)}
-          >
-            <Text style={styles.buttonText}>Sign In</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  // Authentication block removed because guests can view their profile
 
   if (!playerToShow) {
     return (
@@ -380,6 +364,12 @@ export default function ProfileScreen({ isOwnProfile: propIsOwnProfile }: Profil
                 <Text style={styles.playerName}>{name}</Text>
                 <Text style={styles.countryFlag}>{getFlagEmoji(country)}</Text>
               </View>
+
+              {isGuest && (
+                <View style={styles.guestBadgeContainer}>
+                  <Text style={styles.guestBadgeText}>GUEST ACCOUNT ⚪</Text>
+                </View>
+              )}
               
               <View style={styles.rankContainer}>
                 <LinearGradient
@@ -451,14 +441,25 @@ export default function ProfileScreen({ isOwnProfile: propIsOwnProfile }: Profil
             </TouchableOpacity>
 
             {isOwnProfile && (
-              <TouchableOpacity 
-                style={styles.logoutBtn} 
-                onPress={handleLogout}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="log-out-outline" size={22} color="#ef4444" />
-                <Text style={styles.logoutBtnText}>TERMINATE SESSION</Text>
-              </TouchableOpacity>
+              isGuest ? (
+                <TouchableOpacity 
+                  style={[styles.logoutBtn, { backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)' }]} 
+                  onPress={() => navigation.navigate('Auth')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="shield-checkmark" size={22} color="#10b981" />
+                  <Text style={[styles.logoutBtnText, { color: '#10b981' }]}>SECURE YOUR RANK & REWARDS</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity 
+                  style={styles.logoutBtn} 
+                  onPress={handleLogout}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="log-out-outline" size={22} color="#ef4444" />
+                  <Text style={styles.logoutBtnText}>TERMINATE SESSION</Text>
+                </TouchableOpacity>
+              )
             )}
           </View>
 
@@ -565,6 +566,19 @@ const styles = StyleSheet.create({
   },
   countryFlag: {
     fontSize: 24,
+  },
+  guestBadgeContainer: {
+    marginTop: 8,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  guestBadgeText: {
+    color: '#cbd5e1',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   rankContainer: {
     marginTop: 12,

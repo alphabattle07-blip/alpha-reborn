@@ -1,7 +1,7 @@
 // src/store/slices/userSlice.ts
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { UserProfile } from "../../../src/services/api/authService";
-import { fetchUserProfile, signInUser, updateUserProfileAndGameStatsThunk, updateUserProfileThunk } from './authSlice';
+import { fetchUserProfile, signInUser, signUpUser, autoGuestLogin, upgradeAccountThunk, updateUserProfileAndGameStatsThunk, updateUserProfileThunk } from './authSlice';
 import { logout } from './authSlice';
 
 interface UserState {
@@ -24,6 +24,15 @@ const userSlice = createSlice({
     builder
       // When signIn is successful, also set the profile from its payload
       .addCase(signInUser.fulfilled, (state, action) => {
+        state.profile = action.payload.user;
+      })
+      .addCase(signUpUser.fulfilled, (state, action) => {
+        state.profile = action.payload.user;
+      })
+      .addCase(autoGuestLogin.fulfilled, (state, action) => {
+        state.profile = action.payload.user;
+      })
+      .addCase(upgradeAccountThunk.fulfilled, (state, action) => {
         state.profile = action.payload.user;
       })
       .addCase(fetchUserProfile.pending, (state) => {

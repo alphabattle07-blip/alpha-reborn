@@ -7,12 +7,14 @@ const API_BASE_URL = "https://ab-backend-8dfa.onrender.com/api";
 // --- TypeScript Interfaces for API data ---
 export interface UserProfile {
   id: string;
-  email: string;
+  email: string | null;
   name: string;
   avatar?: string;
   country?: string;
   mcoin?: number;
   rating?: number; // Added top-level rating
+  accountType?: string;
+  guestId?: string;
   gameStats?: Array<{
     id?: string; // Added optional id property
     gameId: string;
@@ -129,6 +131,29 @@ export const signUp = async (name: string, email: string, password: string): Pro
     return response.data;
   } catch (error: any) {
     throw new Error(error.response?.data?.error || "Sign up failed. Please try again.");
+  }
+};
+
+export const guestLogin = async (guestId: string, deviceId: string): Promise<AuthResponse> => {
+  try {
+    const response = await api.post<AuthResponse>("/auth/guest", { guestId, deviceId });
+    return response.data;
+  } catch (error: any) {
+    throw new Error(error.response?.data?.error || "Guest login failed.");
+  }
+};
+
+export const upgradeAccount = async (
+  token: string,
+  data: { email: string; password?: string; name?: string; provider?: string }
+): Promise<AuthResponse> => {
+  try {
+    const response = await api.post<AuthResponse>("/auth/upgrade", data, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+  } catch (error: any) {
+    throw new Error(error.response?.data?.error || "Account upgrade failed.");
   }
 };
 // ------------------------------

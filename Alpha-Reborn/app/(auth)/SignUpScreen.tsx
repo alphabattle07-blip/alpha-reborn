@@ -15,15 +15,20 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { signUp } from "../../src/services/api/authService";
 import { RootStackParamList } from "../../src/navigation/types";
+import { useAppDispatch, useAppSelector } from "../../src/store/hooks";
+import { signUpUser, upgradeAccountThunk } from "../../src/store/slices/authSlice";
 
 type SignUpNavProp = NativeStackNavigationProp<RootStackParamList, "SignUp">;
 
 const SignUpScreen = () => {
+  const dispatch = useAppDispatch();
+  const { isGuest, token } = useAppSelector((state) => state.auth);
+  const { profile } = useAppSelector((state) => state.user);
+  
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(isGuest && profile?.name ? profile.name : "");
   const [isLoading, setIsLoading] = useState(false);
   const navigation = useNavigation<SignUpNavProp>();
 
@@ -35,14 +40,16 @@ const SignUpScreen = () => {
 
     setIsLoading(true);
     try {
-      const response = await signUp(username, email, password);
-      await AsyncStorage.setItem("userToken", response.token);
-
-      Alert.alert("Success", "Account created successfully!");
-      console.log("Redirecting to SplashScreen");
-      navigation.replace("Splash"); // ✅ Redirect after signup
+      if (isGuest) {
+        await dispatch(upgradeAccountThunk({ email, password, name: username })).unwrap();
+        Alert.alert("Success", "Account upgraded! Your rank and rewards are preserved.");
+      } else {
+        await dispatch(signUpUser({ email, password, name: username })).unwrap();
+        Alert.alert("Success", "Account created successfully!");
+      }
+      navigation.replace("Home"); // Redirect after signup
     } catch (error: any) {
-      Alert.alert("Sign Up Error", error.message || "An error occurred during sign up.");
+      Alert.alert("Error", error || "An error occurred.");
     } finally {
       setIsLoading(false);
     }
@@ -56,8 +63,10 @@ const SignUpScreen = () => {
           style={styles.keyboardView}
         >
           <View style={styles.content}>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Sign up to get started</Text>
+            <Text style={styles.title}>{isGuest ? "Secure Account" : "Create Account"}</Text>
+            <Text style={styles.subtitle}>
+              {isGuest ? "Register to save your rank & rewards" : "Sign up to get started"}
+            </Text>
 
             <TextInput
               style={styles.input}
