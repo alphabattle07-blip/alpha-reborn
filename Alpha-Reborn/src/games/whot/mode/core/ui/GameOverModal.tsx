@@ -80,14 +80,17 @@ const GameOverModal = ({
         let bonus = 0;
 
         if (isOnline) {
-          // Enforce the new required numbers for online games
-          bonus = 25; // ONLINE_BATTLE_BONUS
-          if (isWin) reward = 50; // ONLINE_WIN_PRIZE
-          else if (isLoss) reward = -50; // ONLINE_LOSS_PENALTY
+          // Online matches: battle bonus is 10. 
+          // Total gain for win is +50 (10 bonus + 40 reward).
+          // Total loss for lose is -40 (10 bonus - 50 reward).
+          bonus = 10;
+          if (isWin) reward = 40;
+          else if (isLoss) reward = -50;
           else if (isDraw) reward = 0;
           totalChange = bonus + reward;
         } else {
-          bonus = isWin ? 15 : 0; // OFFLINE_BATTLE_BONUS
+          // Computer rewards: 5 bonus + difficulty level (2,4,6,8,10)
+          bonus = 5; 
           if (isWin && level) {
             const levelData = levels.find((l) => l.value === level);
             reward = levelData?.reward ?? 0;
@@ -206,13 +209,15 @@ const GameOverModal = ({
           {/* 4. Rewards Section */}
           {(isWin || isDraw || isOnline) && (
             <View style={styles.rewardSection}>
-              <View style={styles.rewardRow}>
-                <Text style={styles.rewardLabel}>Battle Bonus</Text>
-                <Text style={styles.rewardValue}>
-                  <Ionicons name="diamond" size={16} color="#FFD700" /> +
-                  {bonus} R-Coin
-                </Text>
-              </View>
+              {bonus > 0 && (
+                <View style={styles.rewardRow}>
+                  <Text style={styles.rewardLabel}>Battle Bonus</Text>
+                  <Text style={styles.rewardValue}>
+                    <Ionicons name="diamond" size={16} color="#FFD700" /> +
+                    {bonus} R-Coin
+                  </Text>
+                </View>
+              )}
 
               {(!isOnline || isWin || isLoss) && (
                 <View style={styles.rewardRow}>

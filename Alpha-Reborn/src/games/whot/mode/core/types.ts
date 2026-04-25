@@ -113,9 +113,9 @@ export type WhotGameAction =
 export type ComputerLevel = 1 | 2 | 3 | 4 | 5;
 
 export const WHOT_LEVELS = [
-  { label: "Apprentice", value: 1 as ComputerLevel, rating: 1250, reward: 10 },
-  { label: "Knight", value: 2 as ComputerLevel, rating: 1500, reward: 15 },
-  { label: "Warrior", value: 3 as ComputerLevel, rating: 1750, reward: 20 },
-  { label: "Master", value: 4 as ComputerLevel, rating: 2000, reward: 25 },
-  { label: "Alpha", value: 5 as ComputerLevel, rating: 2250, reward: 30 },
+  { label: "Apprentice", value: 1 as ComputerLevel, rating: 1250, reward: 2 },
+  { label: "Knight", value: 2 as ComputerLevel, rating: 1500, reward: 4 },
+  { label: "Warrior", value: 3 as ComputerLevel, rating: 1750, reward: 6 },
+  { label: "Master", value: 4 as ComputerLevel, rating: 2000, reward: 8 },
+  { label: "Alpha", value: 5 as ComputerLevel, rating: 2250, reward: 10 },
 ] as const;

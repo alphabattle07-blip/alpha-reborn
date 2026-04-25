@@ -10,11 +10,11 @@ import { usePlayerProfile } from "../../../hooks/usePlayerProfile";
 import LudoGameOver from "./LudoGameOver";
 
 const levels = [
-    { label: "Apprentice (Easy)", value: 1, rating: 1250, reward: 10 },
-    { label: "Knight (Normal)", value: 2, rating: 1700, reward: 15 },
-    { label: "Warrior (Hard)", value: 3, rating: 1900, reward: 20 },
-    { label: "Master (Expert)", value: 4, rating: 2000, reward: 25 },
-    { label: "Alpha (Legend)", value: 5, rating: 2250, reward: 30 },
+    { label: "Apprentice (Easy)", value: 1, rating: 1250, reward: 2 },
+    { label: "Knight (Normal)", value: 2, rating: 1700, reward: 4 },
+    { label: "Warrior (Hard)", value: 3, rating: 1900, reward: 6 },
+    { label: "Master (Expert)", value: 4, rating: 2000, reward: 8 },
+    { label: "Alpha (Legend)", value: 5, rating: 2250, reward: 10 },
 ];
 
 export default function LudoComputerUI() {
@@ -112,7 +112,7 @@ export default function LudoComputerUI() {
                                                     <Text style={styles.rewardLabel}>REWARD</Text>
                                                     <View style={styles.rewardBox}>
                                                         <Text style={styles.rewardValue}>+{lvl.reward}</Text>
-                                                        <Text style={styles.rewardUnit}>XP</Text>
+                                                        <Text style={styles.rewardUnit}>R-Coins</Text>
                                                     </View>
                                                 </View>
                                             </View>

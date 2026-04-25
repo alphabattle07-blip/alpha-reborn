@@ -7,11 +7,11 @@ import { updateGameStatsThunk } from '../../../store/thunks/gameStatsThunks';
 import Animated, { FadeIn, FadeOut, ZoomIn } from 'react-native-reanimated';
 
 const levels = [
-    { label: "Apprentice (Easy)", value: 1, rating: 1250, reward: 10 },
-    { label: "Knight (Normal)", value: 2, rating: 1500, reward: 15 },
-    { label: "Warrior (Hard)", value: 3, rating: 1700, reward: 20 },
-    { label: "Master (Expert)", value: 4, rating: 1900, reward: 25 },
-    { label: "Alpha (Legend)", value: 5, rating: 2100, reward: 30 },
+    { label: "Apprentice (Easy)", value: 1, rating: 1250, reward: 2 },
+    { label: "Knight (Normal)", value: 2, rating: 1500, reward: 4 },
+    { label: "Warrior (Hard)", value: 3, rating: 1700, reward: 6 },
+    { label: "Master (Expert)", value: 4, rating: 1900, reward: 8 },
+    { label: "Alpha (Legend)", value: 5, rating: 2100, reward: 10 },
 ];
 
 const BATTLE_BONUS = 15;
@@ -74,11 +74,11 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
             let bonus = 0;
 
             if (isOnline) {
-                bonus = 25; // ONLINE_BATTLE_BONUS
-                reward = isWin ? 50 : -50; // ONLINE_WIN_PRIZE / ONLINE_LOSS_PENALTY
+                bonus = 10; 
+                reward = isWin ? 40 : -50; 
                 totalChange = bonus + reward;
             } else {
-                bonus = isWin ? 15 : 0; // OFFLINE_BATTLE_BONUS
+                bonus = 5; 
                 if (isWin && level) {
                     const levelData = levels.find((l) => l.value === level);
                     reward = levelData?.reward ?? 0;
@@ -142,13 +142,15 @@ const LudoGameOver: React.FC<LudoGameOverProps> = ({
 
                     {(isWin || isOnline) && (
                         <View style={styles.rewardSection}>
-                            <View style={styles.rewardRow}>
-                                <Text style={styles.rewardLabel}>Battle Bonus</Text>
-                                <Text style={styles.rewardValue}>
-                                    <Ionicons name="trophy" size={16} color="#FFD700" /> +
-                                    {displayBonus} R-Coin
-                                </Text>
-                            </View>
+                            {displayBonus > 0 && (
+                                <View style={styles.rewardRow}>
+                                    <Text style={styles.rewardLabel}>Battle Bonus</Text>
+                                    <Text style={styles.rewardValue}>
+                                        <Ionicons name="trophy" size={16} color="#FFD700" /> +
+                                        {displayBonus} R-Coin
+                                    </Text>
+                                </View>
+                            )}
 
                             {(!isOnline || isWin || isLoss) && (
                                 <View style={styles.rewardRow}>
