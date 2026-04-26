@@ -370,18 +370,14 @@ const WhotOnlineUI = () => {
 
       // ─── OPPONENT MOVE → DEDUP + ENQUEUE ANIMATION ───
       const unsubOpponentMove = socketService.onOpponentMove((action: any) => {
-        // Filter out self-moves: backend broadcasts to the whole room and marks
-        // the sender via excludePlayerId — skip if it's us.
+        // Safety net: skip self-moves (server should already exclude us via targeted emit)
         if (action?.excludePlayerId === userProfile?.id) return;
 
-        console.log("📡 [WhotOnline] Received onOpponentMove event:", action.type);
         if (action && action.type && action.eventId) {
-          // Dedup: build a unique key from the action
           const dedupKey = `OPPONENT_MOVE:${action.eventId}`;
 
           if (processedEventsRef.current.has(dedupKey)) {
-            console.log(`⚠️ [WhotOnline] Duplicate opponent-move skipped: ${dedupKey}`);
-            return;
+            return; // Silently skip duplicates
           }
           processedEventsRef.current.add(dedupKey);
 
@@ -390,6 +386,8 @@ const WhotOnlineUI = () => {
             const first = processedEventsRef.current.values().next().value;
             if (first !== undefined) processedEventsRef.current.delete(first);
           }
+
+          console.log("📡 [WhotOnline] Received onOpponentMove event:", action.type);
 
           animationQueue.enqueue(async () => {
             await animateRemoteAction(action as WhotGameAction);
@@ -418,7 +416,14 @@ const WhotOnlineUI = () => {
         console.log("📡 [WhotOnline] Received valid gameStateUpdate v" + board.stateVersion);
         lastVersion.current = board.stateVersion;
 
-        // Apply immediately. Redux handles the rendering separation correctly.
+        // CRITICAL: Defer state application while animations are running.
+        // Applying state mid-animation causes the snap fallback to teleport cards
+        // back to their pre-animation position (the "card return" bug).
+        if (animationQueue.isRunning) {
+          pendingStateRef.current = { board, serverTime };
+          return;
+        }
+
         applyStateUpdate(board, serverTime);
       });
 
@@ -436,8 +441,12 @@ const WhotOnlineUI = () => {
 
       // ─── GAME ENDED (forfeit, normal win) ───
       const unsubGameEnded = socketService.onGameEnded((data: any) => {
-        console.log("📡 [WhotOnline] Game Ended Event:", data);
+        // gameOverProcessedRef prevents multiple processing of game-end events
+        // (both GAME_ENDED and GAME_FORFEIT route to this callback)
+        if (gameOverProcessedRef.current) return;
+        
         if (data?.winnerId && currentGame) {
+          console.log("📡 [WhotOnline] Game Ended Event:", data);
           // Immediately block polling/socket updates
           gameOverProcessedRef.current = true;
 
@@ -1192,7 +1201,7 @@ const WhotOnlineUI = () => {
     dispatch(clearChat());
     // Reset all animation/display state for a fresh session
     animationQueue.clear();
-    setIsAnimating(false);
+    animationLock.isAnimating = false;
     setHasDealt(false);
     setDisplayedHand([]);
     setDisplayedOpponentHand([]);
@@ -1200,7 +1209,10 @@ const WhotOnlineUI = () => {
     displayedOpponentHandRef.current = [];
     pendingDrawIdsRef.current = new Set();
     pendingOpponentDrawIdsRef.current = new Set();
-    processedMoveIdsRef.current = new Set();
+    processedEventsRef.current.clear();
+    pendingLocalPlaysRef.current.clear();
+    pendingOpponentPlaysRef.current.clear();
+    lastVersion.current = 0;
     prevBoardStringRef.current = null;
     stableBoardRef.current = null;
     stableAllCardsRef.current = [];

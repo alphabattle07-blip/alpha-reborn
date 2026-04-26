@@ -209,9 +209,10 @@ class SocketService {
             }
         });
 
-        // Legacy listeners retained as fallbacks:
-        // - gameStateUpdate: still used by recoverLudoGame (direct socket.emit from server)
-        // - gameEnded / gameForfeit: kept for non-Ludo games and direct emits
+        // Legacy direct-emit listeners — ONLY for server paths that bypass broadcastGameEvent.
+        // WARNING: Do NOT add listeners here for events already handled by the gameEvent bridge above.
+        // Doing so causes duplicate processing, double animations, and state desync.
+
         this.socket.on('ludoActionUpdate', (data: any) => {
             // Legacy flat event — only fires if server emits it directly (not via broadcastGameEvent)
             this.emitLocal('ludoActionUpdate', data);
@@ -221,30 +222,16 @@ class SocketService {
             this.emitLocal('turnStarted', data);
         });
 
-
-
-        // Legacy direct-emit listeners (not via gameEvent envelope)
-        // gameStateUpdate: used by recoverLudoGame recovery path (socket.emit directly, not broadcastGameEvent)
+        // gameStateUpdate: ONLY used by recoverLudoGame recovery path (direct socket.emit, not broadcastGameEvent)
+        // Guarded with a flag to prevent double-processing with the gameEvent bridge.
         this.socket.on('gameStateUpdate', (payload: any) => {
+            // Only process direct gameStateUpdate if it has NO eventId/stateVersion envelope fields,
+            // which means it came from a direct socket.emit (e.g. recoverLudoGame), not from
+            // broadcastGameEvent/broadcastScrubbedEvent (those always go through the gameEvent bridge).
+            if (payload?.eventId || payload?.stateVersion !== undefined) return;
             const board = payload?.board || payload;
             const serverTime = payload?.serverTime;
             this.emitLocal('gameStateUpdate', board, serverTime);
-        });
-
-        // gameEnded / gameForfeit: direct emits for non-Ludo games or legacy paths
-        this.socket.on('gameEnded', (data: any) => {
-            console.log('[SocketService] Received gameEnded (direct):', data);
-            this.emitLocal('gameEnded', data);
-        });
-
-        this.socket.on('gameForfeit', (data: any) => {
-            console.log('[SocketService] Received gameForfeit (direct):', data);
-            this.emitLocal('gameEnded', data);
-        });
-
-        // Opponent move handler (non-Ludo games)
-        this.socket.on('opponent-move', (move: any) => {
-            this.emitLocal('opponent-move', move);
         });
 
         // Match Ready Handshake events
