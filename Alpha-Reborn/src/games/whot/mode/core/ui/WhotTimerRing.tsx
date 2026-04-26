@@ -5,23 +5,25 @@ import { useSharedValue, useDerivedValue, withTiming, Easing, cancelAnimation } 
 
 interface WhotTimerRingProps {
     isActive: boolean;
-    turnStartTime?: number;
-    turnDuration?: number;
-    warningYellowAt?: number; // Kept for interface compatibility but ignored in logic
-    warningRedAt?: number; // Kept for interface compatibility but ignored in logic
-    serverTimeOffset?: number; // local time - server time
+    turnEndTime?: number;    // Absolute server timestamp when turn expires
+    warningRedAt?: number;   // Absolute server timestamp when timer turns red
+    turnDuration?: number;   // Total turn duration in ms (for progress calculation)
+    serverTimeOffset?: number; // Date.now() - serverTime (positive = client ahead)
     size?: number;
     strokeWidth?: number;
 }
 
 /**
  * An animated timer ring implemented using Skia.
- * Starts at 30 seconds green, gradually reduces, turns red at 5 seconds.
+ * Uses absolute server timestamps (turnEndTime) for perfect cross-device sync.
+ * Both players see the exact same timer state because they compare against
+ * the same server-provided deadline, adjusted by their individual clock offset.
  */
 export const WhotTimerRing: React.FC<WhotTimerRingProps> = ({
     isActive,
-    turnStartTime = 0,
-    turnDuration = 15000,
+    turnEndTime = 0,
+    warningRedAt = 0,
+    turnDuration = 30000,
     serverTimeOffset = 0,
     size = 72,
     strokeWidth = 4,
@@ -31,16 +33,21 @@ export const WhotTimerRing: React.FC<WhotTimerRingProps> = ({
     const isRed = useSharedValue(false);
 
     useEffect(() => {
-        if (!isActive || !turnStartTime || !turnDuration) {
+        if (!isActive || !turnEndTime || !turnDuration) {
             cancelAnimation(progress);
             progress.value = 1;
             isRed.value = false;
             return;
         }
 
-        const currentServerTime = Date.now() - serverTimeOffset;
-        const elapsed = currentServerTime - turnStartTime;
-        const remaining = turnDuration - elapsed;
+        // Convert server timestamps to local time
+        // serverTimeOffset = Date.now() - serverTime  =>  serverTime = Date.now() - offset
+        // localEquivalent = serverTimestamp + offset
+        const localEndTime = turnEndTime + serverTimeOffset;
+        const localRedAt = warningRedAt ? warningRedAt + serverTimeOffset : localEndTime - 5000;
+
+        const now = Date.now();
+        const remaining = localEndTime - now;
 
         if (remaining <= 0) {
             cancelAnimation(progress);
@@ -50,11 +57,11 @@ export const WhotTimerRing: React.FC<WhotTimerRingProps> = ({
         }
 
         const initialProgress = remaining / turnDuration;
-        progress.value = initialProgress;
-        isRed.value = remaining <= 5000;
+        progress.value = Math.min(1, Math.max(0, initialProgress));
+        isRed.value = now >= localRedAt;
 
-        // Set up exact timing to turn red at 5s remaining
-        const timeUntilRed = remaining - 5000;
+        // Set up exact timing to turn red
+        const timeUntilRed = localRedAt - now;
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
         if (timeUntilRed > 0) {
@@ -63,6 +70,7 @@ export const WhotTimerRing: React.FC<WhotTimerRingProps> = ({
             }, timeUntilRed);
         }
 
+        // Animate progress from current to 0 over the remaining time
         progress.value = withTiming(0, {
             duration: remaining,
             easing: Easing.linear
@@ -71,7 +79,7 @@ export const WhotTimerRing: React.FC<WhotTimerRingProps> = ({
         return () => {
             if (timeoutId) clearTimeout(timeoutId);
         };
-    }, [isActive, turnStartTime, turnDuration, serverTimeOffset, progress, isRed]);
+    }, [isActive, turnEndTime, warningRedAt, turnDuration, serverTimeOffset, progress, isRed]);
 
     const strokeColor = useDerivedValue(() => {
         return isRed.value ? '#FF0000' : '#00FF00';

@@ -90,8 +90,9 @@ export interface GameState {
   marketExhausted?: boolean;
   allCards?: Card[]; // Added for online synchronization
 
-  // --- Dual-Tier Timer Profile ---
+  // --- Timer Profile ---
   turnStartTime?: number;
+  turnEndTime?: number;    // Absolute server timestamp when turn expires
   turnDuration?: number;
   warningYellowAt?: number;
   warningRedAt?: number;

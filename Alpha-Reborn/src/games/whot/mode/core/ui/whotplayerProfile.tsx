@@ -16,7 +16,7 @@ interface Props {
   showCardCount?: boolean;
   style?: any; // Allow style override
   // Timer props
-  turnStartTime?: number;
+  turnEndTime?: number;
   turnDuration?: number;
   warningYellowAt?: number;
   warningRedAt?: number;
@@ -33,7 +33,7 @@ const WhotPlayerProfile = ({
   isCurrentPlayer = false,
   showCardCount = true,
   style,
-  turnStartTime,
+  turnEndTime,
   turnDuration,
   warningYellowAt,
   warningRedAt,
@@ -78,9 +78,8 @@ const WhotPlayerProfile = ({
         {/* The Timer Ring (Under the Avatar) */}
         <WhotTimerRing
           isActive={isCurrentPlayer}
-          turnStartTime={turnStartTime}
+          turnEndTime={turnEndTime}
           turnDuration={turnDuration}
-          warningYellowAt={warningYellowAt}
           warningRedAt={warningRedAt}
           serverTimeOffset={serverTimeOffset}
           size={isLandscape ? 58 : 72}

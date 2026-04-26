@@ -43,7 +43,7 @@ export type WhotCoreUIProps = {
     showSuitSelector: boolean;
 
     // Dual-Tier Timer Props
-    turnStartTime?: number;
+    turnEndTime?: number;
     turnDuration?: number;
     warningYellowAt?: number;
     warningRedAt?: number;
@@ -89,7 +89,7 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
     activeCalledSuit,
     showSuitSelector,
 
-    turnStartTime,
+    turnEndTime,
     turnDuration,
     warningYellowAt,
     warningRedAt,
@@ -228,7 +228,7 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                             showCardCount={true}
                             style={{ marginRight: 0, top: 0, alignSelf: 'center' }}
 
-                            turnStartTime={turnStartTime}
+                            turnEndTime={turnEndTime}
                             turnDuration={turnDuration}
                             warningYellowAt={warningYellowAt}
                             warningRedAt={warningRedAt}
@@ -248,7 +248,7 @@ const WhotCoreUI: React.FC<WhotCoreUIProps> = ({
                         cardCount={playerState.handLength}
                         isCurrentPlayer={playerState.isCurrentPlayer}
 
-                        turnStartTime={turnStartTime}
+                        turnEndTime={turnEndTime}
                         turnDuration={turnDuration}
                         warningYellowAt={warningYellowAt}
                         warningRedAt={warningRedAt}
@@ -504,7 +504,7 @@ export default React.memo(WhotCoreUI, (prev, next) => {
     // 4. Turn & Timer — MUST re-render when turn changes so the timer ring switches player
     if (prev.playerState.isCurrentPlayer !== next.playerState.isCurrentPlayer) return false;
     if (prev.opponentState.isCurrentPlayer !== next.opponentState.isCurrentPlayer) return false;
-    if (prev.turnStartTime !== next.turnStartTime) return false;
+    if (prev.turnEndTime !== next.turnEndTime) return false;
     if (prev.warningYellowAt !== next.warningYellowAt) return false;
     if (prev.warningRedAt !== next.warningRedAt) return false;
 

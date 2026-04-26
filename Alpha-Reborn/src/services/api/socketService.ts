@@ -77,10 +77,10 @@ class SocketService {
                 this.socket?.emit('join_match_chat', this.chatMatchId);
             }
 
-            // Re-emit MATCH_READY if pending
+            // Re-emit player_ready if pending
             if (this.pendingMatchReadyGameId) {
-                console.log('[SocketService] Re-emitting MATCH_READY on connect:', this.pendingMatchReadyGameId);
-                this.socket?.emit('MATCH_READY', { gameId: this.pendingMatchReadyGameId });
+                console.log('[SocketService] Re-emitting player_ready on connect:', this.pendingMatchReadyGameId);
+                this.socket?.emit('player_ready', { matchId: this.pendingMatchReadyGameId });
             }
         });
 
@@ -186,9 +186,20 @@ class SocketService {
                     });
                     break;
 
+                case 'GAME_START':
+                    this.emitLocal('gameStart', {
+                        ...payload,
+                        serverTime,
+                    });
+                    break;
+
                 case 'GAME_FORFEIT':
                 case 'GAME_ENDED':
                     this.emitLocal('gameEnded', payload);
+                    break;
+
+                case 'MATCH_CANCELLED':
+                    this.emitLocal('matchCancelled', payload);
                     break;
 
                 default:
@@ -423,6 +434,10 @@ class SocketService {
         return this.on('LOGIC_VERSION_MISMATCH', callback);
     }
 
+    onGameStart(callback: (data: any) => void) {
+        return this.on('gameStart', callback);
+    }
+
     // --- Match Ready Handshake ---
 
     emitMatchReady(gameId: string) {
@@ -430,8 +445,8 @@ class SocketService {
         if (!this.socket) this.connect();
 
         if (this.socket?.connected) {
-            console.log('[SocketService] Emitting MATCH_READY for game:', gameId);
-            this.socket.emit('MATCH_READY', { gameId });
+            console.log('[SocketService] Emitting player_ready for match:', gameId);
+            this.socket.emit('player_ready', { matchId: gameId });
         }
         // If not connected, the 'connect' handler will handle it
     }

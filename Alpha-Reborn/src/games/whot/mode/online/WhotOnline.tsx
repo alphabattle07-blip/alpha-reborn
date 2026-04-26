@@ -344,6 +344,9 @@ const WhotOnlineUI = () => {
       socketService.register(userProfile.id);
       socketService.joinGame(currentGame.id);
 
+      // Signal to backend that this client is loaded and ready to play
+      socketService.emitMatchReady(currentGame.id);
+
       // Join Match Chat
       socketService.joinMatchChat(currentGame.id);
 
@@ -461,11 +464,34 @@ const WhotOnlineUI = () => {
         }
       });
 
+      // ─── GAME START (Timer Sync) ───
+      const unsubGameStart = socketService.onGameStart((data: any) => {
+        if (data?.startTime) {
+          // Calibrate clock offset at game start for maximum accuracy
+          setServerTimeOffset(Date.now() - (data.serverTime || Date.now()));
+          console.log('[WhotOnline] GAME_START received. Timer synced.');
+        }
+      });
+
+      // ─── MATCH CANCELLED (Players didn't connect) ───
+      const unsubMatchCancelled = socketService.onMatchCancelled((data: any) => {
+        console.log("📡 [WhotOnline] Match Cancelled Event:", data);
+        gameOverProcessedRef.current = true;
+        dispatch(setCurrentGame({
+          ...currentGame,
+          status: 'COMPLETED',
+          winnerId: null,
+          reason: data?.reason || 'Match was cancelled because players did not connect.'
+        }));
+      });
+
       return () => {
         unsubOpponentMove();
         unsubStateUpdate();
         unsubMoveRejected();
         unsubGameEnded();
+        unsubGameStart();
+        unsubMatchCancelled();
 
         unsubChatStatus();
         unsubChatHistory();
@@ -1282,8 +1308,8 @@ const WhotOnlineUI = () => {
         activeCalledSuit={visualGameState.calledSuit || null}
         showSuitSelector={isSuitSelectorOpen || (visualGameState.pendingAction?.type === 'call_suit' && visualGameState.currentPlayer === 0)}
 
-        // Dual-Tier Timer Props
-        turnStartTime={visualGameState.turnStartTime}
+        // Timer Props — use absolute turnEndTime for cross-device sync
+        turnEndTime={visualGameState.turnEndTime}
         turnDuration={visualGameState.turnDuration}
         warningYellowAt={visualGameState.warningYellowAt}
         warningRedAt={visualGameState.warningRedAt}
